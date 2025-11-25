@@ -125,10 +125,42 @@ export interface Answer {
 export interface Material {
   id: string;
   projectId: string;
+  folderId?: string; // Reference to folder
   fileName: string;
   fileType: string;
   filePath: string;
   uploadedAt: Date;
+}
+
+// Material Folder types
+export interface MaterialFolder {
+  id: string;
+  name: string;
+  description?: string;
+  teacherId: string;
+  materialsCount: number;
+  createdAt: Date;
+}
+
+// Participant types
+export interface Participant {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  type: "individual" | "group-member";
+  groupId?: string;
+  createdAt: Date;
+}
+
+// Participant Group types
+export interface ParticipantGroup {
+  id: string;
+  name: string;
+  description?: string;
+  teacherId: string;
+  membersCount: number;
+  createdAt: Date;
 }
 
 // Statistics types

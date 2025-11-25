@@ -112,7 +112,7 @@ const formatDuration = (minutes: number) => {
           <el-col :xs="24" :sm="12" :md="8" :lg="5">
             <el-card shadow="hover">
               <el-statistic
-                title="Average Score"
+                :title="t('projectStats.averageScore')"
                 :value="statistics.averageScore"
                 suffix="%"
               >
@@ -126,7 +126,7 @@ const formatDuration = (minutes: number) => {
           <el-col :xs="24" :sm="12" :md="8" :lg="5">
             <el-card shadow="hover">
               <el-statistic
-                title="Highest Score"
+                :title="t('projectStats.highestScore')"
                 :value="statistics.highestScore"
                 suffix="%"
               >
@@ -140,7 +140,7 @@ const formatDuration = (minutes: number) => {
           <el-col :xs="24" :sm="12" :md="8" :lg="5">
             <el-card shadow="hover">
               <el-statistic
-                title="Lowest Score"
+                :title="t('projectStats.lowestScore')"
                 :value="statistics.lowestScore"
                 suffix="%"
               >
@@ -154,7 +154,7 @@ const formatDuration = (minutes: number) => {
           <el-col :xs="24" :sm="12" :md="8" :lg="5">
             <el-card shadow="hover">
               <el-statistic
-                title="Pass Rate"
+                :title="t('projectStats.passRate')"
                 :value="statistics.passRate"
                 suffix="%"
               >
@@ -176,18 +176,21 @@ const formatDuration = (minutes: number) => {
             <el-table-column type="expand">
               <template #default="{ row }">
                 <div class="expand-content">
-                  <h4>Test Details</h4>
+                  <h4>{{ t("projectStats.testDetails") }}</h4>
                   <el-descriptions :column="2" border>
-                    <el-descriptions-item label="Email">{{
+                    <el-descriptions-item :label="t('projectStats.email')">{{
                       row.email
                     }}</el-descriptions-item>
-                    <el-descriptions-item label="Time Spent">{{
-                      formatDuration(row.timeSpent)
-                    }}</el-descriptions-item>
-                    <el-descriptions-item label="Completed At">
+                    <el-descriptions-item
+                      :label="t('projectStats.timeSpent')"
+                      >{{ formatDuration(row.timeSpent) }}</el-descriptions-item
+                    >
+                    <el-descriptions-item
+                      :label="t('projectStats.completedAt')"
+                    >
                       {{ row.completedAt.toLocaleString() }}
                     </el-descriptions-item>
-                    <el-descriptions-item label="Percentage">
+                    <el-descriptions-item :label="t('projectStats.percentage')">
                       {{ Math.round((row.score / row.maxScore) * 100) }}%
                     </el-descriptions-item>
                   </el-descriptions>
@@ -195,12 +198,16 @@ const formatDuration = (minutes: number) => {
               </template>
             </el-table-column>
 
-            <el-table-column prop="studentName" label="Student Name" sortable />
+            <el-table-column
+              prop="studentName"
+              :label="t('projectStats.studentName')"
+              sortable
+            />
 
             <el-table-column
-              label="Score"
+              :label="t('results.score')"
               sortable
-              :sort-method="(a, b) => a.score - b.score"
+              :sort-method="(a: { score: number }, b: { score: number }) => a.score - b.score"
             >
               <template #default="{ row }">
                 <el-tag
@@ -212,7 +219,7 @@ const formatDuration = (minutes: number) => {
               </template>
             </el-table-column>
 
-            <el-table-column label="Percentage" sortable>
+            <el-table-column :label="t('projectStats.percentage')" sortable>
               <template #default="{ row }">
                 <el-progress
                   :percentage="Math.round((row.score / row.maxScore) * 100)"
@@ -223,22 +230,30 @@ const formatDuration = (minutes: number) => {
               </template>
             </el-table-column>
 
-            <el-table-column prop="timeSpent" label="Time" sortable>
+            <el-table-column
+              prop="timeSpent"
+              :label="t('projectStats.timeSpent')"
+              sortable
+            >
               <template #default="{ row }">
                 {{ formatDuration(row.timeSpent) }}
               </template>
             </el-table-column>
 
-            <el-table-column prop="completedAt" label="Completed" sortable>
+            <el-table-column
+              prop="completedAt"
+              :label="t('projectStats.completedAt')"
+              sortable
+            >
               <template #default="{ row }">
                 {{ row.completedAt.toLocaleTimeString() }}
               </template>
             </el-table-column>
 
-            <el-table-column label="Actions" width="150">
+            <el-table-column :label="t('projectStats.actions')" width="150">
               <template #default="{ row }">
                 <el-button type="primary" size="small" link>
-                  View Details
+                  {{ t("projectStats.viewDetails") }}
                 </el-button>
               </template>
             </el-table-column>

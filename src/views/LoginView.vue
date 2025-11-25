@@ -102,7 +102,7 @@ const handleLogin = async () => {
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item :label="t('common.email')">
+        <el-form-item>
           <el-input
             v-model="formData.email"
             type="email"
@@ -112,7 +112,7 @@ const handleLogin = async () => {
           />
         </el-form-item>
 
-        <el-form-item :label="t('common.password')">
+        <el-form-item>
           <el-input
             v-model="formData.password"
             type="password"

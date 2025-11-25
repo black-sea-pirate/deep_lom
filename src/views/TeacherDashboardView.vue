@@ -157,8 +157,9 @@ const handleLogout = () => {
 }
 
 .header {
-  background: white;
+  background: var(--color-background);
   box-shadow: var(--shadow-sm);
+  border-bottom: 1px solid var(--color-border);
 
   .header-content {
     display: flex;
@@ -175,6 +176,7 @@ const handleLogout = () => {
       display: flex;
       align-items: center;
       gap: var(--spacing-md);
+      color: var(--color-text);
     }
   }
 }

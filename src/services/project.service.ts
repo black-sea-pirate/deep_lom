@@ -1,0 +1,201 @@
+/**
+ * Project Service
+ *
+ * Handles all project-related API calls:
+ * - CRUD operations for projects
+ * - Project settings management
+ * - Test generation triggers
+ */
+
+import api, { type PaginatedResponse } from "./api";
+import type { Project, ProjectSettings } from "@/types";
+
+/**
+ * Create project request payload
+ */
+export interface CreateProjectRequest {
+  title: string;
+  description: string;
+  groupName: string;
+  settings: ProjectSettings;
+}
+
+/**
+ * Update project request payload
+ */
+export interface UpdateProjectRequest {
+  title?: string;
+  description?: string;
+  groupName?: string;
+  settings?: Partial<ProjectSettings>;
+  status?: "draft" | "ready" | "active" | "completed";
+  startTime?: string; // ISO date string
+  endTime?: string; // ISO date string
+}
+
+/**
+ * Project list query parameters
+ */
+export interface ProjectListParams {
+  page?: number;
+  size?: number;
+  status?: string;
+  search?: string;
+}
+
+/**
+ * Project Service
+ */
+export const projectService = {
+  /**
+   * Get all projects for current teacher
+   * @param params - Query parameters for filtering/pagination
+   * @returns Paginated list of projects
+   */
+  async getProjects(
+    params?: ProjectListParams
+  ): Promise<PaginatedResponse<Project>> {
+    const response = await api.get<PaginatedResponse<Project>>("/projects", {
+      params,
+    });
+    return response.data;
+  },
+
+  /**
+   * Get single project by ID
+   * @param id - Project ID
+   * @returns Project details
+   */
+  async getProject(id: string): Promise<Project> {
+    const response = await api.get<Project>(`/projects/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Create new project
+   * @param data - Project creation data
+   * @returns Created project
+   */
+  async createProject(data: CreateProjectRequest): Promise<Project> {
+    const response = await api.post<Project>("/projects", data);
+    return response.data;
+  },
+
+  /**
+   * Update existing project
+   * @param id - Project ID
+   * @param data - Updated project data
+   * @returns Updated project
+   */
+  async updateProject(
+    id: string,
+    data: UpdateProjectRequest
+  ): Promise<Project> {
+    const response = await api.patch<Project>(`/projects/${id}`, data);
+    return response.data;
+  },
+
+  /**
+   * Delete project
+   * @param id - Project ID
+   */
+  async deleteProject(id: string): Promise<void> {
+    await api.delete(`/projects/${id}`);
+  },
+
+  /**
+   * Duplicate existing project
+   * @param id - Project ID to duplicate
+   * @returns New duplicated project
+   */
+  async duplicateProject(id: string): Promise<Project> {
+    const response = await api.post<Project>(`/projects/${id}/duplicate`);
+    return response.data;
+  },
+
+  /**
+   * Trigger AI test generation for project
+   * @param id - Project ID
+   * @returns Generation job status
+   */
+  async generateTests(id: string): Promise<{ jobId: string; status: string }> {
+    const response = await api.post<{ jobId: string; status: string }>(
+      `/projects/${id}/generate-tests`
+    );
+    return response.data;
+  },
+
+  /**
+   * Check test generation status
+   * @param id - Project ID
+   * @param jobId - Generation job ID
+   * @returns Current generation status
+   */
+  async getGenerationStatus(
+    id: string,
+    jobId: string
+  ): Promise<{
+    status: "pending" | "processing" | "completed" | "failed";
+    progress?: number;
+    message?: string;
+  }> {
+    const response = await api.get(`/projects/${id}/generate-tests/${jobId}`);
+    return response.data;
+  },
+
+  /**
+   * Update project schedule (start/end times)
+   * @param id - Project ID
+   * @param startTime - Test availability start time
+   * @param endTime - Test availability end time
+   */
+  async updateSchedule(
+    id: string,
+    startTime: Date,
+    endTime: Date
+  ): Promise<Project> {
+    const response = await api.patch<Project>(`/projects/${id}/schedule`, {
+      start_time: startTime.toISOString(),
+      end_time: endTime.toISOString(),
+    });
+    return response.data;
+  },
+
+  /**
+   * Activate project for students
+   * @param id - Project ID
+   * @returns Updated project with active status
+   */
+  async activateProject(id: string): Promise<Project> {
+    const response = await api.post<Project>(`/projects/${id}/activate`);
+    return response.data;
+  },
+
+  /**
+   * Complete/close project
+   * @param id - Project ID
+   * @returns Updated project with completed status
+   */
+  async completeProject(id: string): Promise<Project> {
+    const response = await api.post<Project>(`/projects/${id}/complete`);
+    return response.data;
+  },
+
+  /**
+   * Get project statistics
+   * @param id - Project ID
+   * @returns Project statistics and analytics
+   */
+  async getProjectStatistics(id: string): Promise<{
+    totalStudents: number;
+    completedTests: number;
+    averageScore: number;
+    passRate: number;
+    scoreDistribution: Record<string, number>;
+  }> {
+    const response = await api.get(`/projects/${id}/statistics`);
+    return response.data;
+  },
+};
+
+export default projectService;

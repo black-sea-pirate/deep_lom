@@ -19,40 +19,62 @@ const router = createRouter({
       component: () => import("@/views/RegisterView.vue"),
     },
     {
+      // Teacher area now uses a layout with a persistent sidebar
       path: "/teacher",
-      name: "teacher",
-      component: () => import("@/views/TeacherDashboardView.vue"),
+      component: () => import("@/layouts/TeacherLayout.vue"),
       meta: { requiresAuth: true, role: "teacher" },
-    },
-    {
-      path: "/teacher/project/create",
-      name: "project-create",
-      component: () => import("@/views/ProjectCreateView.vue"),
-      meta: { requiresAuth: true, role: "teacher" },
-    },
-    {
-      path: "/teacher/project/:id",
-      name: "project-detail",
-      component: () => import("@/views/ProjectDetailView.vue"),
-      meta: { requiresAuth: true, role: "teacher" },
-    },
-    {
-      path: "/teacher/project/:id/edit",
-      name: "project-edit",
-      component: () => import("@/views/QuestionEditorView.vue"),
-      meta: { requiresAuth: true, role: "teacher" },
-    },
-    {
-      path: "/teacher/project/:id/lobby",
-      name: "project-lobby",
-      component: () => import("@/views/LobbyView.vue"),
-      meta: { requiresAuth: true, role: "teacher" },
-    },
-    {
-      path: "/teacher/project/:id/statistics",
-      name: "project-statistics",
-      component: () => import("@/views/ProjectStatisticsView.vue"),
-      meta: { requiresAuth: true, role: "teacher" },
+      children: [
+        {
+          path: "",
+          name: "teacher-dashboard",
+          component: () => import("@/views/TeacherDashboardView.vue"),
+        },
+        {
+          path: "participants",
+          name: "teacher-participants",
+          component: () => import("@/views/TeacherParticipantsView.vue"),
+        },
+        {
+          path: "materials",
+          name: "teacher-materials",
+          component: () => import("@/views/TeacherMaterialsView.vue"),
+        },
+        {
+          path: "analytics",
+          name: "teacher-analytics",
+          component: () => import("@/views/TeacherAnalyticsView.vue"),
+        },
+        {
+          path: "settings",
+          name: "teacher-settings",
+          component: () => import("@/views/TeacherSettingsView.vue"),
+        },
+        {
+          path: "project/create",
+          name: "project-create",
+          component: () => import("@/views/ProjectCreateView.vue"),
+        },
+        {
+          path: "project/:id",
+          name: "project-detail",
+          component: () => import("@/views/ProjectDetailView.vue"),
+        },
+        {
+          path: "project/:id/edit",
+          name: "project-edit",
+          component: () => import("@/views/QuestionEditorView.vue"),
+        },
+        {
+          path: "project/:id/lobby",
+          name: "project-lobby",
+          component: () => import("@/views/LobbyView.vue"),
+        },
+        {
+          path: "project/:id/statistics",
+          name: "project-statistics",
+          component: () => import("@/views/ProjectStatisticsView.vue"),
+        },
+      ],
     },
     {
       path: "/student",
