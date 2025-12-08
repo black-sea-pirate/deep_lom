@@ -125,6 +125,9 @@ const activeMenu = computed(() => {
   border-right: 1px solid var(--color-neutral);
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
 }
 
 .brand {
@@ -148,6 +151,8 @@ const activeMenu = computed(() => {
 .sidebar-bottom {
   padding: var(--spacing-md);
   border-top: 1px solid var(--color-neutral);
+  margin-top: auto;
+  flex-shrink: 0;
 }
 
 .bottom-controls {

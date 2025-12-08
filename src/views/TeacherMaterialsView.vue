@@ -33,6 +33,7 @@ import {
   Plus,
 } from "@element-plus/icons-vue";
 import type { UploadFile, UploadProps } from "element-plus";
+import { materialService } from "@/services/material.service";
 import type { Material, MaterialFolder } from "@/types";
 
 // Router and stores
@@ -59,74 +60,44 @@ const folderForm = ref({
 const showMoveDialog = ref(false);
 const movingMaterial = ref<Material | null>(null);
 
-// Mock folders data
-const folders = ref<MaterialFolder[]>([
-  {
-    id: "folder-1",
-    name: "Mathematics",
-    description: "Linear algebra and calculus materials",
-    teacherId: "teacher-1",
-    materialsCount: 2,
-    createdAt: new Date("2024-11-01"),
-  },
-  {
-    id: "folder-2",
-    name: "Physics",
-    description: "Quantum mechanics and thermodynamics",
-    teacherId: "teacher-1",
-    materialsCount: 1,
-    createdAt: new Date("2024-11-05"),
-  },
-  {
-    id: "folder-3",
-    name: "Chemistry",
-    description: "Organic chemistry notes",
-    teacherId: "teacher-1",
-    materialsCount: 0,
-    createdAt: new Date("2024-11-10"),
-  },
-]);
+// Data from API
+const folders = ref<MaterialFolder[]>([]);
+const materials = ref<Material[]>([]);
 
-// Mock materials data (will be replaced with API calls)
-const materials = ref<Material[]>([
-  {
-    id: "1",
-    projectId: "",
-    fileName: "Linear_Algebra_Chapter_1.pdf",
-    fileType: "application/pdf",
-    filePath: "/uploads/linear_algebra.pdf",
-    uploadedAt: new Date("2024-11-20"),
-    folderId: "folder-1",
-  },
-  {
-    id: "2",
-    projectId: "",
-    fileName: "Quantum_Mechanics_Notes.docx",
-    fileType:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    filePath: "/uploads/quantum.docx",
-    uploadedAt: new Date("2024-11-18"),
-    folderId: "folder-2",
-  },
-  {
-    id: "3",
-    projectId: "proj-1",
-    fileName: "Formulas_Reference.png",
-    fileType: "image/png",
-    filePath: "/uploads/formulas.png",
-    uploadedAt: new Date("2024-11-15"),
-    folderId: "folder-1",
-  },
-  {
-    id: "4",
-    projectId: "",
-    fileName: "General_Notes.txt",
-    fileType: "text/plain",
-    filePath: "/uploads/general_notes.txt",
-    uploadedAt: new Date("2024-11-22"),
-    folderId: undefined, // File without folder (root level)
-  },
-]);
+// Load data from API
+const loadFolders = async () => {
+  try {
+    const data = await materialService.getFolders();
+    folders.value = data || [];
+  } catch (error) {
+    console.error("Failed to load folders:", error);
+    ElMessage.error(
+      t("materialsPage.loadFoldersError") || "Failed to load folders"
+    );
+  }
+};
+
+const loadMaterials = async () => {
+  loading.value = true;
+  try {
+    const response = await materialService.getMaterials({
+      page: 1,
+      size: 100,
+      folderId: currentFolderId.value || undefined,
+    });
+    materials.value = response.items || [];
+  } catch (error) {
+    console.error("Failed to load materials:", error);
+    ElMessage.error(t("materialsPage.loadError") || "Failed to load materials");
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Initialize on mount
+onMounted(async () => {
+  await Promise.all([loadFolders(), loadMaterials()]);
+});
 
 // Computed
 const hasMaterials = computed(() => filteredMaterials.value.length > 0);
@@ -196,15 +167,17 @@ const formatDate = (date: Date): string => {
 /**
  * Navigate to folder
  */
-const openFolder = (folder: MaterialFolder) => {
+const openFolder = async (folder: MaterialFolder) => {
   currentFolderId.value = folder.id;
+  await loadMaterials();
 };
 
 /**
  * Navigate back to root
  */
-const goBack = () => {
+const goBack = async () => {
   currentFolderId.value = null;
+  await loadMaterials();
 };
 
 /**
@@ -233,7 +206,7 @@ const openEditFolderDialog = (folder: MaterialFolder) => {
 /**
  * Save folder (create or edit)
  */
-const saveFolder = () => {
+const saveFolder = async () => {
   if (!folderForm.value.name.trim()) {
     ElMessage.warning(
       t("materialsPage.folderNameRequired") || "Folder name is required"
@@ -241,46 +214,41 @@ const saveFolder = () => {
     return;
   }
 
-  if (folderDialogMode.value === "create") {
-    // Create new folder
-    const newFolder: MaterialFolder = {
-      id: `folder-${Date.now()}`,
-      name: folderForm.value.name.trim(),
-      description: folderForm.value.description.trim(),
-      teacherId: authStore.user?.id || "teacher-1",
-      materialsCount: 0,
-      createdAt: new Date(),
-    };
-    folders.value.push(newFolder);
-    ElMessage.success(t("materialsPage.folderCreated") || "Folder created");
-  } else if (editingFolder.value) {
-    // Edit existing folder
-    const folder = editingFolder.value;
-    const index = folders.value.findIndex((f) => f.id === folder.id);
-    if (index > -1) {
-      folders.value[index].name = folderForm.value.name.trim();
-      folders.value[index].description = folderForm.value.description.trim();
+  loading.value = true;
+  try {
+    if (folderDialogMode.value === "create") {
+      await materialService.createFolder({
+        name: folderForm.value.name.trim(),
+        description: folderForm.value.description.trim() || undefined,
+      });
+      ElMessage.success(t("materialsPage.folderCreated") || "Folder created");
+    } else if (editingFolder.value) {
+      await materialService.updateFolder(editingFolder.value.id, {
+        name: folderForm.value.name.trim(),
+        description: folderForm.value.description.trim() || undefined,
+      });
+      ElMessage.success(t("materialsPage.folderUpdated") || "Folder updated");
     }
-    ElMessage.success(t("materialsPage.folderUpdated") || "Folder updated");
-  }
 
-  showFolderDialog.value = false;
+    showFolderDialog.value = false;
+    await loadFolders();
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to save folder";
+    ElMessage.error(message);
+  } finally {
+    loading.value = false;
+  }
 };
 
 /**
  * Delete folder
  */
 const handleDeleteFolder = async (folder: MaterialFolder) => {
-  // Check if folder has materials
-  const folderMaterials = materials.value.filter(
-    (m) => m.folderId === folder.id
-  );
-
   const confirmMessage =
-    folderMaterials.length > 0
+    folder.materialsCount > 0
       ? `${t("materialsPage.confirmDeleteFolder") || "Delete folder"} "${
           folder.name
-        }"? ${folderMaterials.length} files will be moved to root.`
+        }"? ${folder.materialsCount} files will be moved to root.`
       : `${t("materialsPage.confirmDeleteFolder") || "Delete folder"} "${
           folder.name
         }"?`;
@@ -292,20 +260,17 @@ const handleDeleteFolder = async (folder: MaterialFolder) => {
       type: "warning",
     });
 
-    // Move materials to root
-    folderMaterials.forEach((m) => {
-      m.folderId = undefined;
-    });
-
-    // Remove folder
-    const index = folders.value.findIndex((f) => f.id === folder.id);
-    if (index > -1) {
-      folders.value.splice(index, 1);
-    }
-
+    loading.value = true;
+    await materialService.deleteFolder(folder.id);
     ElMessage.success(t("materialsPage.folderDeleted") || "Folder deleted");
-  } catch {
-    // User cancelled
+    await Promise.all([loadFolders(), loadMaterials()]);
+  } catch (error: any) {
+    if (error !== "cancel") {
+      const message = error.response?.data?.detail || "Failed to delete folder";
+      ElMessage.error(message);
+    }
+  } finally {
+    loading.value = false;
   }
 };
 
@@ -320,28 +285,25 @@ const openMoveDialog = (material: Material) => {
 /**
  * Move material to selected folder
  */
-const moveToFolder = (targetFolderId: string | null) => {
+const moveToFolder = async (targetFolderId: string | null) => {
   if (!movingMaterial.value) return;
 
-  // Update folder counts
-  if (movingMaterial.value.folderId) {
-    const oldFolder = folders.value.find(
-      (f) => f.id === movingMaterial.value!.folderId
+  loading.value = true;
+  try {
+    await materialService.moveMaterialToFolder(
+      movingMaterial.value.id,
+      targetFolderId
     );
-    if (oldFolder) oldFolder.materialsCount--;
+    showMoveDialog.value = false;
+    movingMaterial.value = null;
+    ElMessage.success(t("materialsPage.fileMoved") || "File moved");
+    await Promise.all([loadFolders(), loadMaterials()]);
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to move file";
+    ElMessage.error(message);
+  } finally {
+    loading.value = false;
   }
-
-  if (targetFolderId) {
-    const newFolder = folders.value.find((f) => f.id === targetFolderId);
-    if (newFolder) newFolder.materialsCount++;
-  }
-
-  // Update material
-  movingMaterial.value.folderId = targetFolderId || undefined;
-
-  showMoveDialog.value = false;
-  movingMaterial.value = null;
-  ElMessage.success(t("materialsPage.fileMoved") || "File moved");
 };
 
 // ============ FILE FUNCTIONS ============
@@ -378,47 +340,39 @@ const beforeUpload: UploadProps["beforeUpload"] = (rawFile) => {
 
 /**
  * Handle file upload
- * TODO: Replace with actual API call using materialService
+ * Note: When using http-request, options.file is the raw File object directly
  */
-const handleUpload = async (options: { file: UploadFile }) => {
+const handleUpload = async (options: any) => {
   uploading.value = true;
   uploadProgress.value = 0;
 
   try {
-    // Simulate upload progress
-    const progressInterval = setInterval(() => {
-      if (uploadProgress.value < 90) {
-        uploadProgress.value += 10;
-      }
-    }, 200);
-
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    clearInterval(progressInterval);
-    uploadProgress.value = 100;
-
-    // Add to local list (mock)
-    const newMaterial: Material = {
-      id: Date.now().toString(),
-      projectId: "",
-      fileName: options.file.name || "Uploaded File",
-      fileType: options.file.raw?.type || "application/octet-stream",
-      filePath: `/uploads/${options.file.name}`,
-      uploadedAt: new Date(),
-      folderId: currentFolderId.value || undefined,
-    };
-
-    // Update folder count if in a folder
-    if (currentFolderId.value) {
-      const folder = folders.value.find((f) => f.id === currentFolderId.value);
-      if (folder) folder.materialsCount++;
+    // In http-request mode, file is directly available as options.file (raw File object)
+    const file = options.file as File;
+    if (!file) {
+      throw new Error("No file provided");
     }
 
-    materials.value.unshift(newMaterial);
+    console.log("📤 Uploading file:", file.name, file.type, file.size);
+
+    await materialService.uploadMaterial(
+      file,
+      currentFolderId.value || undefined,
+      (progress) => {
+        uploadProgress.value = progress;
+      }
+    );
+
+    uploadProgress.value = 100;
     ElMessage.success(t("materialsPage.uploadSuccess"));
-  } catch (error) {
-    ElMessage.error(t("materialsPage.uploadError"));
+    await Promise.all([loadFolders(), loadMaterials()]);
+  } catch (error: any) {
+    // Error is already handled by API interceptor, just log for debugging
+    console.error("❌ Upload error:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
   } finally {
     uploading.value = false;
     uploadProgress.value = 0;
@@ -427,7 +381,6 @@ const handleUpload = async (options: { file: UploadFile }) => {
 
 /**
  * Handle material deletion
- * TODO: Replace with actual API call using materialService
  */
 const handleDelete = async (material: Material) => {
   try {
@@ -441,38 +394,49 @@ const handleDelete = async (material: Material) => {
       }
     );
 
-    // Update folder count
-    if (material.folderId) {
-      const folder = folders.value.find((f) => f.id === material.folderId);
-      if (folder) folder.materialsCount--;
-    }
-
-    // Remove from local list (mock)
-    const index = materials.value.findIndex((m) => m.id === material.id);
-    if (index > -1) {
-      materials.value.splice(index, 1);
-    }
-
+    loading.value = true;
+    await materialService.deleteMaterial(material.id);
     ElMessage.success(t("materialsPage.deleteSuccess"));
-  } catch {
-    // User cancelled
+    await Promise.all([loadFolders(), loadMaterials()]);
+  } catch (error: any) {
+    if (error !== "cancel") {
+      const message =
+        error.response?.data?.detail || "Failed to delete material";
+      ElMessage.error(message);
+    }
+  } finally {
+    loading.value = false;
   }
 };
 
 /**
  * Handle material preview
- * TODO: Implement preview modal or new tab
  */
 const handlePreview = (material: Material) => {
-  ElMessage.info(`Preview: ${material.fileName}`);
+  const previewUrl = materialService.getPreviewUrl(material.id);
+  window.open(previewUrl, "_blank");
 };
 
 /**
  * Handle material download
- * TODO: Replace with actual API call using materialService
  */
-const handleDownload = (material: Material) => {
-  ElMessage.success(`Downloading: ${material.fileName}`);
+const handleDownload = async (material: Material) => {
+  try {
+    const blob = await materialService.downloadMaterial(material.id);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = material.originalName || material.fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    ElMessage.success(
+      `Downloading: ${material.originalName || material.fileName}`
+    );
+  } catch (error) {
+    ElMessage.error("Failed to download file");
+  }
 };
 
 /**
@@ -482,18 +446,6 @@ const handleLogout = () => {
   authStore.logout();
   router.push("/login");
 };
-
-// Lifecycle
-onMounted(async () => {
-  // TODO: Fetch materials from API
-  // loading.value = true;
-  // try {
-  //   const response = await materialService.getMaterials();
-  //   materials.value = response.items;
-  // } finally {
-  //   loading.value = false;
-  // }
-});
 </script>
 
 <template>
@@ -676,7 +628,9 @@ onMounted(async () => {
                     <el-icon :size="24" class="file-icon">
                       <component :is="getFileIcon(row.fileType)" />
                     </el-icon>
-                    <span class="file-name">{{ row.fileName }}</span>
+                    <span class="file-name">{{
+                      row.originalName || row.fileName
+                    }}</span>
                   </div>
                 </template>
               </el-table-column>
@@ -817,7 +771,9 @@ onMounted(async () => {
           t("materialsPage.selectDestination") ||
           "Select destination folder for"
         }}:
-        <strong>{{ movingMaterial?.fileName }}</strong>
+        <strong>{{
+          movingMaterial?.originalName || movingMaterial?.fileName
+        }}</strong>
       </p>
       <div class="folder-select-list">
         <div

@@ -1,14 +1,25 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useI18n } from "vue-i18n";
 import ThemeToggle from "@/components/ThemeToggle.vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import {
+  studentService,
+  type StudentEmail,
+  type StudentStatistics,
+  type CompletedTestInfo,
+  type UpcomingTestInfo,
+  type ContactRequest,
+} from "@/services";
 
 const router = useRouter();
 const authStore = useAuthStore();
 const { t, locale } = useI18n();
+
+// Loading state
+const loading = ref(false);
 
 // Active tab for statistics modal
 const activeStatTab = ref<"total" | "average" | "completed">("total");
@@ -29,92 +40,193 @@ const changeLanguage = (lang: string) => {
   localStorage.setItem("locale", lang);
 };
 
-// Mock data - Upcoming Tests
-const upcomingTests = computed(() => [
-  {
-    id: "1",
-    title: "Linear Equations",
-    groupName: "KN420-Б",
-    questionsCount: 18,
-    duration: 60,
-    scheduledAt: new Date(Date.now() + 86400000),
-  },
-  {
-    id: "2",
-    title: "Quantum Physics Introduction",
-    groupName: "PH301-A",
-    questionsCount: 10,
-    duration: 90,
-    scheduledAt: new Date(Date.now() + 172800000),
-  },
-]);
+// Data from API
+const upcomingTests = ref<UpcomingTestInfo[]>([]);
+const completedTestsList = ref<CompletedTestInfo[]>([]);
+const statistics = ref<StudentStatistics>({
+  totalTests: 0,
+  completedTests: 0,
+  averageScore: 0,
+});
+const userEmails = ref<StudentEmail[]>([]);
 
-// Mock data - Completed Tests (for statistics)
-const completedTestsList = ref([
-  {
-    id: "t1",
-    title: "Calculus Basics",
-    groupName: "MATH101",
-    score: 92,
-    maxScore: 100,
-    completedAt: new Date("2025-11-20"),
-  },
-  {
-    id: "t2",
-    title: "Physics Mechanics",
-    groupName: "PH201",
-    score: 78,
-    maxScore: 100,
-    completedAt: new Date("2025-11-18"),
-  },
-  {
-    id: "t3",
-    title: "Chemistry Organic",
-    groupName: "CHEM301",
-    score: 85,
-    maxScore: 100,
-    completedAt: new Date("2025-11-15"),
-  },
-  {
-    id: "t4",
-    title: "Programming Basics",
-    groupName: "CS101",
-    score: 95,
-    maxScore: 100,
-    completedAt: new Date("2025-11-10"),
-  },
-  {
-    id: "t5",
-    title: "Data Structures",
-    groupName: "CS201",
-    score: 88,
-    maxScore: 100,
-    completedAt: new Date("2025-11-05"),
-  },
-]);
+// Contact requests (notifications)
+const contactRequests = ref<ContactRequest[]>([]);
+const contactRequestsCount = ref(0);
+const showNotificationsDialog = ref(false);
+const processingRequest = ref<string | null>(null);
 
-// Statistics computed
-const statistics = computed(() => ({
-  totalTests: 12,
-  averageScore: 85,
-  completedTests: completedTestsList.value.length,
-}));
+// Countdown timer
+const currentTime = ref(Date.now());
+let countdownInterval: ReturnType<typeof setInterval> | null = null;
 
-// Account emails management
-const userEmails = ref([
-  {
-    id: "1",
-    email: "student@university.edu",
-    isPrimary: true,
-    institution: "University of Technology",
-  },
-  {
-    id: "2",
-    email: "student@coursera.org",
-    isPrimary: false,
-    institution: "Coursera",
-  },
-]);
+const formatCountdown = (
+  targetTime: string | Date | null | undefined,
+  isEndTime: boolean = false
+): string => {
+  if (!targetTime) return "";
+
+  const target = new Date(targetTime).getTime();
+  const diff = target - currentTime.value;
+
+  if (diff <= 0) {
+    return isEndTime
+      ? t("student.testEnded") || "Test ended"
+      : t("student.availableNow") || "Available now";
+  }
+
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+};
+
+const getTestCountdown = (test: UpcomingTestInfo) => {
+  if (test.status === "available") {
+    // Test is available - show time remaining until end
+    if (test.endTime) {
+      return {
+        label: t("student.endsIn") || "Ends in",
+        time: formatCountdown(test.endTime, true),
+        type: "warning" as const,
+      };
+    }
+    return null;
+  } else {
+    // Test is scheduled - show time until start
+    if (test.startTime) {
+      return {
+        label: t("student.startsIn") || "Starts in",
+        time: formatCountdown(test.startTime, false),
+        type: "info" as const,
+      };
+    }
+    return null;
+  }
+};
+
+// Load data from API
+const loadStatistics = async () => {
+  try {
+    const data = await studentService.getStatistics();
+    statistics.value = data;
+  } catch (error) {
+    console.error("Failed to load statistics:", error);
+  }
+};
+
+const loadCompletedTests = async () => {
+  try {
+    const data = await studentService.getCompletedTests();
+    completedTestsList.value = data;
+  } catch (error) {
+    console.error("Failed to load completed tests:", error);
+  }
+};
+
+const loadUpcomingTests = async () => {
+  try {
+    const data = await studentService.getUpcomingTests();
+    upcomingTests.value = data;
+  } catch (error) {
+    console.error("Failed to load upcoming tests:", error);
+  }
+};
+
+const loadEmails = async () => {
+  try {
+    const data = await studentService.getEmails();
+    userEmails.value = data;
+  } catch (error) {
+    console.error("Failed to load emails:", error);
+  }
+};
+
+const loadContactRequests = async () => {
+  try {
+    contactRequests.value = await studentService.getContactRequests();
+    contactRequestsCount.value = await studentService.getContactRequestsCount();
+  } catch (error) {
+    console.error("Failed to load contact requests:", error);
+    contactRequests.value = [];
+    contactRequestsCount.value = 0;
+  }
+};
+
+// Handle contact request actions
+const handleConfirmRequest = async (participantId: string) => {
+  processingRequest.value = participantId;
+  try {
+    await studentService.confirmContactRequest(participantId);
+    ElMessage.success(t("student.requestConfirmed") || "Request confirmed");
+    await loadContactRequests();
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to confirm request";
+    ElMessage.error(message);
+  } finally {
+    processingRequest.value = null;
+  }
+};
+
+const handleRejectRequest = async (participantId: string) => {
+  try {
+    await ElMessageBox.confirm(
+      t("student.confirmRejectRequest") ||
+        "Are you sure you want to reject this request?",
+      t("common.confirm") || "Confirm",
+      { type: "warning" }
+    );
+
+    processingRequest.value = participantId;
+    await studentService.rejectContactRequest(participantId);
+    ElMessage.success(t("student.requestRejected") || "Request rejected");
+    await loadContactRequests();
+  } catch (error: any) {
+    if (error !== "cancel") {
+      const message =
+        error.response?.data?.detail || "Failed to reject request";
+      ElMessage.error(message);
+    }
+  } finally {
+    processingRequest.value = null;
+  }
+};
+
+// Initialize on mount
+onMounted(async () => {
+  loading.value = true;
+  try {
+    await Promise.all([
+      loadStatistics(),
+      loadCompletedTests(),
+      loadUpcomingTests(),
+      loadEmails(),
+      loadContactRequests(),
+    ]);
+  } finally {
+    loading.value = false;
+  }
+
+  // Start countdown timer update
+  countdownInterval = setInterval(() => {
+    currentTime.value = Date.now();
+  }, 1000);
+});
+
+// Cleanup on unmount
+onUnmounted(() => {
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+  }
+});
 
 const newEmailForm = ref({
   email: "",
@@ -134,7 +246,7 @@ const openStatistics = (tab: "total" | "average" | "completed") => {
 };
 
 // Add new email
-const addEmail = () => {
+const addEmail = async () => {
   if (!newEmailForm.value.email || !newEmailForm.value.institution) {
     ElMessage.warning(t("common.fillAllFields") || "Please fill all fields");
     return;
@@ -148,19 +260,22 @@ const addEmail = () => {
     return;
   }
 
-  userEmails.value.push({
-    id: Date.now().toString(),
-    email: newEmailForm.value.email,
-    isPrimary: false,
-    institution: newEmailForm.value.institution,
-  });
-
-  newEmailForm.value = { email: "", institution: "" };
-  ElMessage.success(t("studentAccount.emailAdded") || "Email added");
+  try {
+    await studentService.addEmail(
+      newEmailForm.value.email,
+      newEmailForm.value.institution
+    );
+    newEmailForm.value = { email: "", institution: "" };
+    ElMessage.success(t("studentAccount.emailAdded") || "Email added");
+    await loadEmails();
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to add email";
+    ElMessage.error(message);
+  }
 };
 
 // Remove email
-const removeEmail = (emailId: string) => {
+const removeEmail = async (emailId: string) => {
   const email = userEmails.value.find((e) => e.id === emailId);
   if (email?.isPrimary) {
     ElMessage.warning(
@@ -169,30 +284,41 @@ const removeEmail = (emailId: string) => {
     return;
   }
 
-  ElMessageBox.confirm(
-    t("studentAccount.confirmRemoveEmail") || "Remove this email?",
-    t("common.delete") || "Delete",
-    { type: "warning" }
-  )
-    .then(() => {
-      userEmails.value = userEmails.value.filter((e) => e.id !== emailId);
-      ElMessage.success(t("studentAccount.emailRemoved") || "Email removed");
-    })
-    .catch(() => {});
+  try {
+    await ElMessageBox.confirm(
+      t("studentAccount.confirmRemoveEmail") || "Remove this email?",
+      t("common.delete") || "Delete",
+      { type: "warning" }
+    );
+
+    await studentService.deleteEmail(emailId);
+    ElMessage.success(t("studentAccount.emailRemoved") || "Email removed");
+    await loadEmails();
+  } catch (error: any) {
+    if (error !== "cancel") {
+      const message = error.response?.data?.detail || "Failed to remove email";
+      ElMessage.error(message);
+    }
+  }
 };
 
 // Set primary email
-const setPrimaryEmail = (emailId: string) => {
-  userEmails.value.forEach((e) => {
-    e.isPrimary = e.id === emailId;
-  });
-  ElMessage.success(
-    t("studentAccount.primaryChanged") || "Primary email changed"
-  );
+const setPrimaryEmail = async (emailId: string) => {
+  try {
+    await studentService.setPrimaryEmail(emailId);
+    ElMessage.success(
+      t("studentAccount.primaryChanged") || "Primary email changed"
+    );
+    await loadEmails();
+  } catch (error: any) {
+    const message =
+      error.response?.data?.detail || "Failed to change primary email";
+    ElMessage.error(message);
+  }
 };
 
 // Change password
-const changePassword = () => {
+const changePassword = async () => {
   if (
     !passwordForm.value.currentPassword ||
     !passwordForm.value.newPassword ||
@@ -217,16 +343,24 @@ const changePassword = () => {
     return;
   }
 
-  // Mock API call
-  ElMessage.success(
-    t("studentAccount.passwordChanged") || "Password changed successfully"
-  );
-  passwordForm.value = {
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  };
-  showPasswordDialog.value = false;
+  try {
+    await studentService.changePassword(
+      passwordForm.value.currentPassword,
+      passwordForm.value.newPassword
+    );
+    ElMessage.success(
+      t("studentAccount.passwordChanged") || "Password changed successfully"
+    );
+    passwordForm.value = {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    };
+    showPasswordDialog.value = false;
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to change password";
+    ElMessage.error(message);
+  }
 };
 
 const handleLogout = () => {
@@ -260,6 +394,19 @@ const getScoreType = (score: number) => {
             <el-menu-item index="tests" @click="openStatistics('completed')">
               <el-icon><Document /></el-icon>
               <span>{{ t("student.myStatistics") }}</span>
+            </el-menu-item>
+            <el-menu-item
+              index="notifications"
+              @click="showNotificationsDialog = true"
+            >
+              <el-badge
+                :value="contactRequestsCount"
+                :hidden="contactRequestsCount === 0"
+                :max="99"
+              >
+                <el-icon><Bell /></el-icon>
+                <span>{{ t("student.notifications") || "Notifications" }}</span>
+              </el-badge>
             </el-menu-item>
           </el-menu>
 
@@ -386,24 +533,40 @@ const getScoreType = (score: number) => {
                   <h3>{{ test.title }}</h3>
                   <p class="group-name">{{ test.groupName }}</p>
                 </div>
-                <el-tag type="warning">Upcoming</el-tag>
+                <el-tag
+                  :type="test.status === 'available' ? 'success' : 'warning'"
+                >
+                  {{
+                    test.status === "available"
+                      ? t("student.available") || "Available"
+                      : t("student.scheduled") || "Scheduled"
+                  }}
+                </el-tag>
               </div>
 
               <div class="test-info">
                 <div class="info-item">
-                  <el-icon><Document /></el-icon>
-                  <span
-                    >{{ test.questionsCount }}
-                    {{ t("student.question") }}s</span
-                  >
-                </div>
-                <div class="info-item">
                   <el-icon><Timer /></el-icon>
                   <span>{{ test.duration }} min</span>
                 </div>
-                <div class="info-item">
+                <div class="info-item" v-if="test.startTime">
                   <el-icon><Calendar /></el-icon>
-                  <span>{{ test.scheduledAt.toLocaleDateString() }}</span>
+                  <span>{{
+                    new Date(test.startTime).toLocaleDateString()
+                  }}</span>
+                </div>
+              </div>
+
+              <!-- Countdown Timer -->
+              <div v-if="getTestCountdown(test)" class="countdown-section">
+                <div class="countdown-label">
+                  {{ getTestCountdown(test)?.label }}
+                </div>
+                <div
+                  class="countdown-timer"
+                  :class="getTestCountdown(test)?.type"
+                >
+                  {{ getTestCountdown(test)?.time }}
                 </div>
               </div>
 
@@ -412,8 +575,13 @@ const getScoreType = (score: number) => {
                 size="large"
                 @click="router.push(`/student/test/${test.id}`)"
                 style="width: 100%; margin-top: 16px"
+                :disabled="test.status !== 'available'"
               >
-                {{ t("student.takeTest") }}
+                {{
+                  test.status === "available"
+                    ? t("student.takeTest")
+                    : t("student.waitingForStart") || "Waiting for start"
+                }}
               </el-button>
             </el-card>
 
@@ -483,8 +651,13 @@ const getScoreType = (score: number) => {
             />
             <el-table-column :label="t('results.score') || 'Score'" width="120">
               <template #default="{ row }">
-                <el-tag :type="getScoreType(row.score)" size="large">
-                  {{ row.score }}%
+                <el-tag
+                  :type="
+                    getScoreType(Math.round((row.score / row.maxScore) * 100))
+                  "
+                  size="large"
+                >
+                  {{ Math.round((row.score / row.maxScore) * 100) }}%
                 </el-tag>
               </template>
             </el-table-column>
@@ -493,7 +666,7 @@ const getScoreType = (score: number) => {
               width="120"
             >
               <template #default="{ row }">
-                {{ row.completedAt.toLocaleDateString() }}
+                {{ new Date(row.completedAt).toLocaleDateString() }}
               </template>
             </el-table-column>
             <el-table-column width="100">
@@ -647,6 +820,98 @@ const getScoreType = (score: number) => {
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- Notifications Dialog -->
+    <el-dialog
+      v-model="showNotificationsDialog"
+      :title="t('student.notifications') || 'Notifications'"
+      width="600px"
+    >
+      <div v-if="contactRequests.length === 0" class="empty-notifications">
+        <el-empty
+          :description="
+            t('student.noNotifications') || 'No pending notifications'
+          "
+          :image-size="100"
+        />
+      </div>
+
+      <div v-else class="notifications-list">
+        <el-alert
+          :title="
+            t('student.contactRequestsInfo') ||
+            'Teachers want to add you to their contacts'
+          "
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px"
+        />
+
+        <div
+          v-for="request in contactRequests"
+          :key="request.id"
+          class="notification-item"
+        >
+          <div class="notification-content">
+            <div class="notification-header">
+              <el-icon size="20"><User /></el-icon>
+              <span class="teacher-name">{{ request.teacherName }}</span>
+            </div>
+            <div class="notification-details">
+              <div class="detail-row">
+                <span class="label"
+                  >{{ t("student.teacherEmail") || "Teacher email" }}:</span
+                >
+                <span class="value">{{ request.teacherEmail }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label"
+                  >{{
+                    t("student.yourNameInRequest") || "Your name in request"
+                  }}:</span
+                >
+                <span class="value">{{ request.studentName }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label"
+                  >{{
+                    t("student.yourEmailInRequest") || "Your email in request"
+                  }}:</span
+                >
+                <span class="value">{{ request.studentEmail }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="notification-actions">
+            <el-button
+              type="success"
+              size="small"
+              @click="handleConfirmRequest(request.id)"
+              :loading="processingRequest === request.id"
+            >
+              <el-icon><Check /></el-icon>
+              {{ t("common.confirm") || "Confirm" }}
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="handleRejectRequest(request.id)"
+              :loading="processingRequest === request.id"
+            >
+              <el-icon><Close /></el-icon>
+              {{ t("common.reject") || "Reject" }}
+            </el-button>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="showNotificationsDialog = false">
+          {{ t("common.close") || "Close" }}
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -777,6 +1042,38 @@ const getScoreType = (score: number) => {
       color: var(--color-text-light);
     }
   }
+
+  .countdown-section {
+    background: var(--color-background);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-md);
+    text-align: center;
+    margin-top: var(--spacing-md);
+
+    .countdown-label {
+      font-size: 0.85rem;
+      color: var(--color-text-light);
+      margin-bottom: var(--spacing-xs);
+    }
+
+    .countdown-timer {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: "Roboto Mono", monospace;
+
+      &.info {
+        color: #409eff;
+      }
+
+      &.warning {
+        color: #e6a23c;
+      }
+
+      &.success {
+        color: #67c23a;
+      }
+    }
+  }
 }
 
 /* Statistics Dialog */
@@ -870,6 +1167,69 @@ const getScoreType = (score: number) => {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--spacing-sm);
+  }
+}
+
+// Notifications styles
+.empty-notifications {
+  padding: var(--spacing-xl);
+}
+
+.notifications-list {
+  .notification-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+    background: var(--color-background);
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    .notification-content {
+      flex: 1;
+
+      .notification-header {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        margin-bottom: var(--spacing-sm);
+
+        .teacher-name {
+          font-weight: 600;
+          font-size: 1.1rem;
+          color: var(--color-text);
+        }
+      }
+
+      .notification-details {
+        .detail-row {
+          display: flex;
+          gap: var(--spacing-sm);
+          margin-bottom: 4px;
+          font-size: 0.9rem;
+
+          .label {
+            color: var(--color-text-light);
+          }
+
+          .value {
+            color: var(--color-text);
+          }
+        }
+      }
+    }
+
+    .notification-actions {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+      margin-left: var(--spacing-md);
+    }
   }
 }
 </style>

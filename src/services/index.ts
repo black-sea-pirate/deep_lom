@@ -13,6 +13,7 @@ export type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
+  TokenRefreshResponse,
 } from "./auth.service";
 
 export { default as projectService } from "./project.service";
@@ -33,13 +34,42 @@ export { default as materialService } from "./material.service";
 export type {
   MaterialListParams,
   UploadProgressCallback,
+  CreateFolderRequest,
 } from "./material.service";
 
 export { default as participantService } from "./participant.service";
 export type {
   Participant,
   Group,
+  CreateParticipantRequest,
   CreateGroupRequest,
   AddStudentRequest,
   BulkImportRequest,
 } from "./participant.service";
+
+export { default as analyticsService } from "./analytics.service";
+export type {
+  OverviewStats,
+  ScoreDistributionItem,
+  RecentTest,
+  TopStudent,
+  ProjectPerformance,
+  AnalyticsResponse,
+} from "./analytics.service";
+
+export { default as studentService } from "./student.service";
+export type {
+  StudentEmail,
+  StudentStatistics,
+  CompletedTestInfo,
+  UpcomingTestInfo,
+  ContactRequest,
+} from "./student.service";
+
+export { LobbyWebSocket, useLobbyWebSocket } from "./websocket.service";
+export type {
+  LobbyStudent,
+  LobbyState,
+  LobbyMessage,
+  ConnectionStatus,
+} from "./websocket.service";

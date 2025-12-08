@@ -98,8 +98,13 @@ const router = createRouter({
 });
 
 // Navigation guard
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
+
+  // Если есть токен, но checkAuth ещё не выполнялся — ждём
+  if (authStore.hasToken && !authStore.initialized) {
+    await authStore.checkAuth();
+  }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next("/login");

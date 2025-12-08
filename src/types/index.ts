@@ -16,7 +16,13 @@ export interface Project {
   description: string;
   groupName: string;
   settings: ProjectSettings;
-  status: "draft" | "ready" | "active" | "completed";
+  status:
+    | "draft"
+    | "ready"
+    | "active"
+    | "completed"
+    | "generating"
+    | "vectorizing";
   createdAt: Date;
   materials: Material[];
   tests: Test[];
@@ -24,6 +30,9 @@ export interface Project {
   startTime?: Date;
   endTime?: Date;
   allowedStudents?: string[]; // email addresses
+  // Vectorization status
+  vectorizationStatus?: string;
+  vectorizationProgress?: number;
 }
 
 export interface ProjectSettings {
@@ -31,6 +40,8 @@ export interface ProjectSettings {
   timePerQuestion: number; // seconds
   questionTypes: QuestionTypeConfig[];
   maxStudents: number;
+  numVariants?: number; // Number of unique test variants (1-30)
+  testLanguage?: string; // Language for generated questions (en, ru, ua, pl)
 }
 
 export interface QuestionTypeConfig {
@@ -124,11 +135,13 @@ export interface Answer {
 // Material types
 export interface Material {
   id: string;
-  projectId: string;
+  projectId?: string;
   folderId?: string; // Reference to folder
-  fileName: string;
+  fileName: string; // UUID-based filename for storage
+  originalName: string; // Original user-friendly filename
   fileType: string;
   filePath: string;
+  fileSize: number;
   uploadedAt: Date;
 }
 
@@ -150,6 +163,8 @@ export interface Participant {
   lastName: string;
   type: "individual" | "group-member";
   groupId?: string;
+  confirmationStatus: "pending" | "confirmed" | "rejected";
+  studentUserId?: string;
   createdAt: Date;
 }
 
@@ -161,6 +176,25 @@ export interface ParticipantGroup {
   teacherId: string;
   membersCount: number;
   createdAt: Date;
+}
+
+// Contact Request (for student notifications)
+export interface ContactRequest {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  teacherEmail: string;
+  status: "pending" | "confirmed" | "rejected";
+  createdAt: Date;
+}
+
+// Student Lookup Response
+export interface StudentLookup {
+  found: boolean;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  userId?: string;
 }
 
 // Statistics types

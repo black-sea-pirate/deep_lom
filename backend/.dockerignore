@@ -1,0 +1,14 @@
+# Docker ignore file
+.env
+.env.*
+*.pyc
+__pycache__
+.git
+.gitignore
+*.md
+.vscode
+.idea
+.pytest_cache
+.mypy_cache
+tests/
+docs/

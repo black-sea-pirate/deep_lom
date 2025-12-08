@@ -15,6 +15,8 @@ import {
   FolderOpened,
   Back,
 } from "@element-plus/icons-vue";
+import { materialService } from "@/services/material.service";
+import { projectService } from "@/services/project.service";
 
 const router = useRouter();
 const projectStore = useProjectStore();
@@ -22,80 +24,39 @@ const { t } = useI18n();
 
 const currentStep = ref(0);
 const loading = ref(false);
+const loadingMaterials = ref(false);
+
+// Progress tracking
+const progressStep = ref("");
+const progressPercent = ref(0);
+const progressDetails = ref("");
 
 // Material selection state
 const browsingFolderId = ref<string | null>(null);
 const selectedMaterialIds = ref<string[]>([]);
 const selectedFolderIds = ref<string[]>([]);
 
-// Mock folders data (would come from API in production)
-const folders = ref<MaterialFolder[]>([
-  {
-    id: "folder-1",
-    name: "Mathematics",
-    description: "Linear algebra and calculus materials",
-    teacherId: "teacher-1",
-    materialsCount: 2,
-    createdAt: new Date("2024-11-01"),
-  },
-  {
-    id: "folder-2",
-    name: "Physics",
-    description: "Quantum mechanics and thermodynamics",
-    teacherId: "teacher-1",
-    materialsCount: 1,
-    createdAt: new Date("2024-11-05"),
-  },
-  {
-    id: "folder-3",
-    name: "Chemistry",
-    description: "Organic chemistry notes",
-    teacherId: "teacher-1",
-    materialsCount: 0,
-    createdAt: new Date("2024-11-10"),
-  },
-]);
+// Data from API
+const folders = ref<MaterialFolder[]>([]);
+const materials = ref<Material[]>([]);
 
-// Mock materials data (would come from API in production)
-const materials = ref<Material[]>([
-  {
-    id: "1",
-    projectId: "",
-    fileName: "Linear_Algebra_Chapter_1.pdf",
-    fileType: "application/pdf",
-    filePath: "/uploads/linear_algebra.pdf",
-    uploadedAt: new Date("2024-11-20"),
-    folderId: "folder-1",
-  },
-  {
-    id: "2",
-    projectId: "",
-    fileName: "Quantum_Mechanics_Notes.docx",
-    fileType:
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    filePath: "/uploads/quantum.docx",
-    uploadedAt: new Date("2024-11-18"),
-    folderId: "folder-2",
-  },
-  {
-    id: "3",
-    projectId: "proj-1",
-    fileName: "Formulas_Reference.png",
-    fileType: "image/png",
-    filePath: "/uploads/formulas.png",
-    uploadedAt: new Date("2024-11-15"),
-    folderId: "folder-1",
-  },
-  {
-    id: "4",
-    projectId: "",
-    fileName: "General_Notes.txt",
-    fileType: "text/plain",
-    filePath: "/uploads/general_notes.txt",
-    uploadedAt: new Date("2024-11-22"),
-    folderId: undefined,
-  },
-]);
+// Load materials and folders from API
+const loadMaterialsData = async () => {
+  loadingMaterials.value = true;
+  try {
+    const [foldersData, materialsData] = await Promise.all([
+      materialService.getFolders(),
+      materialService.getMaterials({ size: 1000 }),
+    ]);
+    folders.value = foldersData || [];
+    materials.value = materialsData.items || [];
+  } catch (error) {
+    console.error("Failed to load materials:", error);
+    ElMessage.error(t("materialsPage.loadError") || "Failed to load materials");
+  } finally {
+    loadingMaterials.value = false;
+  }
+};
 
 const projectData = ref({
   title: "",
@@ -104,12 +65,22 @@ const projectData = ref({
   totalTime: 60,
   timePerQuestion: 120,
   maxStudents: 30,
+  numVariants: 3,
+  testLanguage: "en", // Language for generated questions
   questionTypes: [
     { type: "single-choice", count: 10 },
     { type: "multiple-choice", count: 5 },
     { type: "short-answer", count: 3 },
   ] as QuestionTypeConfig[],
 });
+
+// Available languages for test generation
+const testLanguages = computed(() => [
+  { value: "en", label: t("teacher.langEnglish") || "English" },
+  { value: "ru", label: t("teacher.langRussian") || "Russian" },
+  { value: "ua", label: t("teacher.langUkrainian") || "Ukrainian" },
+  { value: "pl", label: t("teacher.langPolish") || "Polish" },
+]);
 
 // Computed: current folder
 const currentFolder = computed(() => {
@@ -234,8 +205,23 @@ const prevStep = () => {
 };
 
 const handleGenerate = async () => {
+  // Validate materials selected
+  if (selectedMaterialIds.value.length === 0) {
+    ElMessage.warning(
+      t("wizard.selectMaterialsFirst") || "Please select at least one material"
+    );
+    return;
+  }
+
   loading.value = true;
+  progressStep.value = "";
+  progressPercent.value = 0;
+  progressDetails.value = "";
+
   try {
+    // Step 1: Create project
+    progressStep.value = "Creating project...";
+    progressPercent.value = 5;
     const project = await projectStore.createProject({
       title: projectData.value.title,
       groupName: projectData.value.groupName,
@@ -244,20 +230,97 @@ const handleGenerate = async () => {
         totalTime: projectData.value.totalTime,
         timePerQuestion: projectData.value.timePerQuestion,
         maxStudents: projectData.value.maxStudents,
+        numVariants: projectData.value.numVariants,
+        testLanguage: projectData.value.testLanguage,
         questionTypes: projectData.value.questionTypes,
       },
     });
 
+    // Step 2: Add materials to project
+    progressStep.value = "Adding materials...";
+    progressPercent.value = 10;
+    progressDetails.value = `${selectedMaterialIds.value.length} materials`;
+    await projectService.addMaterials(project.id, selectedMaterialIds.value);
+
+    // Step 3: Configure settings (question types)
+    progressStep.value = "Configuring settings...";
+    progressPercent.value = 15;
+    progressDetails.value = "";
+    await projectService.configureSettings(project.id, {
+      totalTime: projectData.value.totalTime,
+      timePerQuestion: projectData.value.timePerQuestion,
+      maxStudents: projectData.value.maxStudents,
+      numVariants: projectData.value.numVariants,
+      testLanguage: projectData.value.testLanguage,
+      questionTypes: projectData.value.questionTypes,
+    });
+
+    // Step 4: Start vectorization
+    progressStep.value = "Vectorizing materials...";
+    progressPercent.value = 20;
+    progressDetails.value = "Starting...";
+    await projectService.startVectorization(project.id);
+
+    // Poll vectorization status until complete
+    let vectorizationComplete = false;
+    let attempts = 0;
+    const maxAttempts = 180; // 15 minutes max (5 sec intervals)
+
+    while (!vectorizationComplete && attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds
+      const status = await projectService.getVectorizationStatus(project.id);
+
+      // Update progress display
+      progressPercent.value = 20 + Math.floor((status.progress || 0) * 0.5); // 20-70%
+      progressDetails.value = `${status.materialsProcessed || 0}/${
+        status.materialsTotal || 0
+      } materials processed`;
+
+      if (status.status === "completed") {
+        vectorizationComplete = true;
+        progressPercent.value = 70;
+      } else if (status.status === "failed") {
+        throw new Error(status.error || "Vectorization failed");
+      }
+
+      attempts++;
+    }
+
+    if (!vectorizationComplete) {
+      // Don't throw error, just continue - AI can work with partial data
+      console.warn(
+        "Vectorization taking long, continuing with available data..."
+      );
+    }
+
+    // Step 5: Generate tests
+    progressStep.value = "Generating test questions with AI...";
+    progressPercent.value = 75;
+    progressDetails.value = "This may take 1-2 minutes";
     await projectStore.generateTests(project.id);
+
+    progressPercent.value = 100;
+    progressStep.value = "Complete!";
+    progressDetails.value = "";
 
     ElMessage.success(t("wizard.testsGenerated"));
     router.push("/teacher");
-  } catch (error) {
-    ElMessage.error("Failed to create project");
+  } catch (error: any) {
+    console.error("Project creation error:", error);
+    const message =
+      error.response?.data?.detail ||
+      error.message ||
+      "Failed to create project";
+    ElMessage.error(message);
   } finally {
     loading.value = false;
   }
 };
+
+// Load materials data on mount
+onMounted(() => {
+  loadMaterialsData();
+});
 </script>
 
 <template>
@@ -296,7 +359,11 @@ const handleGenerate = async () => {
         </div>
 
         <!-- Step 2: Select Materials -->
-        <div v-show="currentStep === 1" class="step">
+        <div
+          v-show="currentStep === 1"
+          class="step"
+          v-loading="loadingMaterials"
+        >
           <h3>{{ t("wizard.selectMaterials") || "Select Materials" }}</h3>
           <p class="step-description">
             {{
@@ -305,112 +372,142 @@ const handleGenerate = async () => {
             }}
           </p>
 
-          <!-- Selection Summary -->
+          <!-- Empty State -->
           <div
-            v-if="selectedCount.materials > 0 || selectedCount.folders > 0"
-            class="selection-summary"
+            v-if="
+              !loadingMaterials &&
+              materials.length === 0 &&
+              folders.length === 0
+            "
+            class="empty-materials"
           >
-            <el-tag type="success" size="large">
-              {{ selectedCount.materials }}
-              {{ selectedCount.materials === 1 ? "file" : "files" }}
-              <span v-if="selectedCount.folders > 0">
-                ({{ selectedCount.folders }}
-                {{ selectedCount.folders === 1 ? "folder" : "folders" }})
-              </span>
-              {{ t("wizard.selected") || "selected" }}
-            </el-tag>
-          </div>
-
-          <!-- Breadcrumb / Back Button -->
-          <div v-if="currentFolder" class="folder-breadcrumb">
-            <el-button :icon="Back" size="small" @click="goBack">
-              {{ t("common.back") || "Back" }}
-            </el-button>
-            <span class="current-path">
-              <el-icon><Folder /></el-icon>
-              {{ currentFolder.name }}
-            </span>
-          </div>
-
-          <!-- Folders Grid (only at root level) -->
-          <div
-            v-if="!browsingFolderId && folders.length > 0"
-            class="folders-section"
-          >
-            <h4>{{ t("materialsPage.folders") || "Folders" }}</h4>
-            <div class="folders-grid">
-              <div
-                v-for="folder in folders"
-                :key="folder.id"
-                class="folder-item"
-                :class="{ selected: isFolderSelected(folder.id) }"
-                @click="openFolder(folder)"
+            <el-empty
+              :description="
+                t('materialsPage.noMaterials') || 'No materials yet'
+              "
+            >
+              <el-button
+                type="primary"
+                @click="router.push('/teacher/materials')"
               >
-                <el-checkbox
-                  :model-value="isFolderSelected(folder.id)"
-                  @click="toggleFolderSelection(folder.id, $event)"
-                  class="folder-checkbox"
-                />
-                <div class="folder-icon">
-                  <el-icon :size="32"><Folder /></el-icon>
-                </div>
-                <div class="folder-info">
-                  <div class="folder-name">{{ folder.name }}</div>
-                  <div class="folder-meta">
-                    {{ folder.materialsCount }}
-                    {{ folder.materialsCount === 1 ? "file" : "files" }}
+                {{ t("materialsPage.uploadFirst") || "Upload Materials" }}
+              </el-button>
+            </el-empty>
+          </div>
+
+          <template v-else>
+            <!-- Selection Summary -->
+            <div
+              v-if="selectedCount.materials > 0 || selectedCount.folders > 0"
+              class="selection-summary"
+            >
+              <el-tag type="success" size="large">
+                {{ selectedCount.materials }}
+                {{ selectedCount.materials === 1 ? "file" : "files" }}
+                <span v-if="selectedCount.folders > 0">
+                  ({{ selectedCount.folders }}
+                  {{ selectedCount.folders === 1 ? "folder" : "folders" }})
+                </span>
+                {{ t("wizard.selected") || "selected" }}
+              </el-tag>
+            </div>
+
+            <!-- Breadcrumb / Back Button -->
+            <div v-if="currentFolder" class="folder-breadcrumb">
+              <el-button :icon="Back" size="small" @click="goBack">
+                {{ t("common.back") || "Back" }}
+              </el-button>
+              <span class="current-path">
+                <el-icon><Folder /></el-icon>
+                {{ currentFolder.name }}
+              </span>
+            </div>
+
+            <!-- Folders Grid (only at root level) -->
+            <div
+              v-if="!browsingFolderId && folders.length > 0"
+              class="folders-section"
+            >
+              <h4>{{ t("materialsPage.folders") || "Folders" }}</h4>
+              <div class="folders-grid">
+                <div
+                  v-for="folder in folders"
+                  :key="folder.id"
+                  class="folder-item"
+                  :class="{ selected: isFolderSelected(folder.id) }"
+                  @click="openFolder(folder)"
+                >
+                  <el-checkbox
+                    :model-value="isFolderSelected(folder.id)"
+                    @click="toggleFolderSelection(folder.id, $event)"
+                    class="folder-checkbox"
+                  />
+                  <div class="folder-icon">
+                    <el-icon :size="32"><Folder /></el-icon>
+                  </div>
+                  <div class="folder-info">
+                    <div class="folder-name">{{ folder.name }}</div>
+                    <div class="folder-meta">
+                      {{ folder.materialsCount }}
+                      {{ folder.materialsCount === 1 ? "file" : "files" }}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Materials List -->
-          <div class="materials-section">
-            <h4 v-if="!browsingFolderId">
-              {{ t("materialsPage.files") || "Files" }} ({{
-                t("wizard.rootLevel") || "Root Level"
-              }})
-            </h4>
-            <h4 v-else>{{ t("materialsPage.files") || "Files" }}</h4>
+            <!-- Materials List -->
+            <div class="materials-section">
+              <h4 v-if="!browsingFolderId">
+                {{ t("materialsPage.files") || "Files" }} ({{
+                  t("wizard.rootLevel") || "Root Level"
+                }})
+              </h4>
+              <h4 v-else>{{ t("materialsPage.files") || "Files" }}</h4>
 
-            <div v-if="filteredMaterials.length === 0" class="empty-state">
-              <el-icon :size="48" class="empty-icon"><FolderOpened /></el-icon>
-              <p>
-                {{
-                  t("wizard.noMaterialsHere") || "No materials in this location"
-                }}
-              </p>
-              <el-button
-                v-if="!browsingFolderId"
-                type="primary"
-                @click="router.push('/teacher/materials')"
-              >
-                {{ t("wizard.goToMaterials") || "Go to Materials" }}
-              </el-button>
-            </div>
+              <div v-if="filteredMaterials.length === 0" class="empty-state">
+                <el-icon :size="48" class="empty-icon"
+                  ><FolderOpened
+                /></el-icon>
+                <p>
+                  {{
+                    t("wizard.noMaterialsHere") ||
+                    "No materials in this location"
+                  }}
+                </p>
+                <el-button
+                  v-if="!browsingFolderId"
+                  type="primary"
+                  @click="router.push('/teacher/materials')"
+                >
+                  {{ t("wizard.goToMaterials") || "Go to Materials" }}
+                </el-button>
+              </div>
 
-            <div v-else class="materials-grid">
-              <div
-                v-for="material in filteredMaterials"
-                :key="material.id"
-                class="material-item"
-                :class="{ selected: isMaterialSelected(material.id) }"
-                @click="toggleMaterialSelection(material.id)"
-              >
-                <el-checkbox
-                  :model-value="isMaterialSelected(material.id)"
-                  class="material-checkbox"
-                />
-                <el-icon :size="24" class="material-icon">
-                  <component :is="getFileIcon(material.fileType)" />
-                </el-icon>
-                <div class="material-info">
-                  <div class="material-name">{{ material.fileName }}</div>
+              <div v-else class="materials-grid">
+                <div
+                  v-for="material in filteredMaterials"
+                  :key="material.id"
+                  class="material-item"
+                  :class="{ selected: isMaterialSelected(material.id) }"
+                  @click="toggleMaterialSelection(material.id)"
+                >
+                  <el-checkbox
+                    :model-value="isMaterialSelected(material.id)"
+                    class="material-checkbox"
+                  />
+                  <el-icon :size="24" class="material-icon">
+                    <component :is="getFileIcon(material.fileType)" />
+                  </el-icon>
+                  <div class="material-info">
+                    <div class="material-name">
+                      {{ material.originalName || material.fileName }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- Step 3: Configure Settings -->
@@ -438,14 +535,63 @@ const handleGenerate = async () => {
               </el-col>
             </el-row>
 
-            <el-form-item :label="t('teacher.maxStudents')">
-              <el-slider
-                v-model="projectData.maxStudents"
-                :min="1"
-                :max="100"
-                show-input
-              />
-            </el-form-item>
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item :label="t('teacher.maxStudents')">
+                  <el-slider
+                    v-model="projectData.maxStudents"
+                    :min="1"
+                    :max="100"
+                    show-input
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item
+                  :label="t('teacher.numVariants') || 'Test Variants'"
+                >
+                  <el-slider
+                    v-model="projectData.numVariants"
+                    :min="1"
+                    :max="30"
+                    show-input
+                  />
+                  <div class="setting-hint">
+                    {{
+                      t("teacher.numVariantsHint") ||
+                      "Number of unique test versions to generate"
+                    }}
+                  </div>
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <el-form-item
+                  :label="t('teacher.testLanguage') || 'Test Language'"
+                >
+                  <el-select
+                    v-model="projectData.testLanguage"
+                    size="large"
+                    style="width: 100%"
+                  >
+                    <el-option
+                      v-for="lang in testLanguages"
+                      :key="lang.value"
+                      :label="lang.label"
+                      :value="lang.value"
+                    />
+                  </el-select>
+                  <div class="setting-hint">
+                    {{
+                      t("teacher.testLanguageHint") ||
+                      "Language for generated questions"
+                    }}
+                  </div>
+                </el-form-item>
+              </el-col>
+            </el-row>
 
             <el-divider />
 
@@ -493,18 +639,34 @@ const handleGenerate = async () => {
             <el-icon v-if="!loading" :size="80" color="#10b981">
               <CircleCheck />
             </el-icon>
-            <div v-else>
-              <el-icon class="is-loading" :size="80" color="#3b82f6">
-                <Loading />
-              </el-icon>
+            <div v-else class="loading-container">
+              <el-progress
+                :percentage="progressPercent"
+                :stroke-width="8"
+                :width="160"
+                type="circle"
+                class="progress-circle"
+              >
+                <template #default>
+                  <el-icon class="is-loading" :size="48" color="#3b82f6">
+                    <Loading />
+                  </el-icon>
+                </template>
+              </el-progress>
             </div>
-            <h3>
+            <h3 class="progress-title">
               {{
                 loading
-                  ? t("wizard.generatingTests")
+                  ? progressStep || t("wizard.generatingTests")
                   : t("wizard.testsGenerated")
               }}
             </h3>
+            <p v-if="loading && progressDetails" class="progress-details">
+              {{ progressDetails }}
+            </p>
+            <p v-if="loading" class="progress-hint">
+              Please wait, do not close this page
+            </p>
             <p v-if="!loading">
               Ready to generate tests for {{ projectData.title }}
             </p>
@@ -577,6 +739,12 @@ const handleGenerate = async () => {
   margin-bottom: var(--spacing-md);
 }
 
+.setting-hint {
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+  margin-top: var(--spacing-xs);
+}
+
 .generate-section {
   display: flex;
   flex-direction: column;
@@ -585,8 +753,36 @@ const handleGenerate = async () => {
   height: 400px;
   text-align: center;
 
-  h3 {
+  .loading-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .progress-circle {
+    :deep(.el-progress__text) {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  .progress-title {
     margin-top: var(--spacing-lg);
+    color: var(--color-text);
+  }
+
+  .progress-details {
+    color: var(--color-primary);
+    font-size: 1rem;
+    margin-top: var(--spacing-sm);
+  }
+
+  .progress-hint {
+    color: var(--color-text-light);
+    font-size: 0.875rem;
+    margin-top: var(--spacing-xs);
   }
 }
 
@@ -735,6 +931,40 @@ const handleGenerate = async () => {
   p {
     margin-bottom: var(--spacing-md);
   }
+}
+
+.loading-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 120px;
+  margin: 0 auto;
+
+  .el-icon {
+    position: absolute;
+  }
+
+  .progress-circle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+}
+
+.progress-details {
+  font-size: 1rem;
+  color: var(--color-primary);
+  margin-top: var(--spacing-sm);
+  font-weight: 500;
+}
+
+.progress-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-light);
+  margin-top: var(--spacing-xs);
 }
 
 @media (max-width: 768px) {

@@ -4,11 +4,12 @@
  * Handles all educational material operations:
  * - File upload/download
  * - Material management
+ * - Folder management
  * - Project-material associations
  */
 
 import api, { type PaginatedResponse } from "./api";
-import type { Material } from "@/types";
+import type { Material, MaterialFolder } from "@/types";
 
 /**
  * Material list query parameters
@@ -16,7 +17,7 @@ import type { Material } from "@/types";
 export interface MaterialListParams {
   page?: number;
   size?: number;
-  projectId?: string;
+  folderId?: string;
   fileType?: string;
   search?: string;
 }
@@ -27,9 +28,21 @@ export interface MaterialListParams {
 export type UploadProgressCallback = (progress: number) => void;
 
 /**
+ * Create folder request
+ */
+export interface CreateFolderRequest {
+  name: string;
+  description?: string;
+}
+
+/**
  * Material Service
  */
 export const materialService = {
+  // ========================
+  // Material operations
+  // ========================
+
   /**
    * Get all materials for current teacher
    * @param params - Query parameters
@@ -69,20 +82,20 @@ export const materialService = {
   /**
    * Upload new material file
    * @param file - File to upload
-   * @param projectId - Optional project ID to associate with
+   * @param folderId - Optional folder ID to upload to
    * @param onProgress - Optional progress callback
    * @returns Uploaded material
    */
   async uploadMaterial(
     file: File,
-    projectId?: string,
+    folderId?: string,
     onProgress?: UploadProgressCallback
   ): Promise<Material> {
     const formData = new FormData();
     formData.append("file", file);
 
-    if (projectId) {
-      formData.append("project_id", projectId);
+    if (folderId) {
+      formData.append("folderId", folderId);
     }
 
     const response = await api.post<Material>("/materials/upload", formData, {
@@ -259,6 +272,70 @@ export const materialService = {
     }
 
     return { valid: true };
+  },
+
+  // ========================
+  // Folder operations
+  // ========================
+
+  /**
+   * Get all folders for current teacher
+   * @returns List of folders
+   */
+  async getFolders(): Promise<MaterialFolder[]> {
+    const response = await api.get<MaterialFolder[]>("/materials/folders");
+    return response.data;
+  },
+
+  /**
+   * Create new folder
+   * @param data - Folder creation data
+   * @returns Created folder
+   */
+  async createFolder(data: CreateFolderRequest): Promise<MaterialFolder> {
+    const response = await api.post<MaterialFolder>("/materials/folders", data);
+    return response.data;
+  },
+
+  /**
+   * Update folder
+   * @param id - Folder ID
+   * @param data - Updated folder data
+   * @returns Updated folder
+   */
+  async updateFolder(
+    id: string,
+    data: Partial<CreateFolderRequest>
+  ): Promise<MaterialFolder> {
+    const response = await api.put<MaterialFolder>(
+      `/materials/folders/${id}`,
+      data
+    );
+    return response.data;
+  },
+
+  /**
+   * Delete folder
+   * @param id - Folder ID
+   */
+  async deleteFolder(id: string): Promise<void> {
+    await api.delete(`/materials/folders/${id}`);
+  },
+
+  /**
+   * Move material to folder
+   * @param materialId - Material ID
+   * @param folderId - Target folder ID (null to move to root)
+   * @returns Updated material
+   */
+  async moveMaterialToFolder(
+    materialId: string,
+    folderId: string | null
+  ): Promise<Material> {
+    const response = await api.patch<Material>(`/materials/${materialId}`, {
+      folder_id: folderId,
+    });
+    return response.data;
   },
 };
 

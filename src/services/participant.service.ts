@@ -8,6 +8,7 @@
  */
 
 import api, { type PaginatedResponse } from "./api";
+import type { StudentLookup } from "@/types";
 
 /**
  * Student/Participant type
@@ -17,8 +18,10 @@ export interface Participant {
   email: string;
   firstName: string;
   lastName: string;
+  type: "individual" | "group-member";
   groupId?: string;
-  groupName?: string;
+  confirmationStatus: "pending" | "confirmed" | "rejected";
+  studentUserId?: string;
   createdAt: Date;
 }
 
@@ -30,8 +33,20 @@ export interface Group {
   name: string;
   description?: string;
   teacherId: string;
-  studentsCount: number;
+  membersCount: number;
   createdAt: Date;
+}
+
+/**
+ * Create participant request (uses camelCase - Pydantic populate_by_name handles conversion)
+ */
+export interface CreateParticipantRequest {
+  email: string;
+  firstName: string;
+  lastName: string;
+  type?: "individual" | "group-member";
+  groupId?: string;
+  autoFill?: boolean; // If true, auto-fill name from database
 }
 
 /**
@@ -64,6 +79,88 @@ export interface BulkImportRequest {
  */
 export const participantService = {
   // ========================
+  // Participant operations
+  // ========================
+
+  /**
+   * Get all participants for current teacher
+   * @param params - Query parameters
+   * @returns Paginated list of participants
+   */
+  async getParticipants(params?: {
+    page?: number;
+    size?: number;
+    groupId?: string;
+    search?: string;
+  }): Promise<PaginatedResponse<Participant>> {
+    const response = await api.get<PaginatedResponse<Participant>>(
+      "/participants",
+      { params }
+    );
+    return response.data;
+  },
+
+  /**
+   * Lookup student by email to auto-fill name
+   * @param email - Email to lookup
+   * @returns Student info if found
+   */
+  async lookupStudent(email: string): Promise<StudentLookup> {
+    const response = await api.get<StudentLookup>("/participants/lookup", {
+      params: { email },
+    });
+    return response.data;
+  },
+
+  /**
+   * Get only confirmed participants (for Lobby selection)
+   * @returns List of confirmed participants
+   */
+  async getConfirmedParticipants(): Promise<Participant[]> {
+    const response = await api.get<PaginatedResponse<Participant>>(
+      "/participants",
+      { params: { page: 1, size: 100 } }
+    );
+    return response.data.items.filter(
+      (p) => p.confirmationStatus === "confirmed"
+    );
+  },
+
+  /**
+   * Create new participant
+   * @param data - Participant creation data
+   * @returns Created participant
+   */
+  async createParticipant(
+    data: CreateParticipantRequest
+  ): Promise<Participant> {
+    const response = await api.post<Participant>("/participants", data);
+    return response.data;
+  },
+
+  /**
+   * Update participant
+   * @param id - Participant ID
+   * @param data - Updated participant data
+   * @returns Updated participant
+   */
+  async updateParticipant(
+    id: string,
+    data: Partial<CreateParticipantRequest>
+  ): Promise<Participant> {
+    const response = await api.put<Participant>(`/participants/${id}`, data);
+    return response.data;
+  },
+
+  /**
+   * Delete participant
+   * @param id - Participant ID
+   */
+  async deleteParticipant(id: string): Promise<void> {
+    await api.delete(`/participants/${id}`);
+  },
+
+  // ========================
   // Group operations
   // ========================
 
@@ -72,7 +169,7 @@ export const participantService = {
    * @returns List of groups
    */
   async getGroups(): Promise<Group[]> {
-    const response = await api.get<Group[]>("/groups");
+    const response = await api.get<Group[]>("/participants/groups");
     return response.data;
   },
 
@@ -82,7 +179,7 @@ export const participantService = {
    * @returns Group details
    */
   async getGroup(id: string): Promise<Group> {
-    const response = await api.get<Group>(`/groups/${id}`);
+    const response = await api.get<Group>(`/participants/groups/${id}`);
     return response.data;
   },
 
@@ -92,7 +189,7 @@ export const participantService = {
    * @returns Created group
    */
   async createGroup(data: CreateGroupRequest): Promise<Group> {
-    const response = await api.post<Group>("/groups", data);
+    const response = await api.post<Group>("/participants/groups", data);
     return response.data;
   },
 
@@ -106,7 +203,7 @@ export const participantService = {
     id: string,
     data: Partial<CreateGroupRequest>
   ): Promise<Group> {
-    const response = await api.patch<Group>(`/groups/${id}`, data);
+    const response = await api.put<Group>(`/participants/groups/${id}`, data);
     return response.data;
   },
 
@@ -115,126 +212,7 @@ export const participantService = {
    * @param id - Group ID
    */
   async deleteGroup(id: string): Promise<void> {
-    await api.delete(`/groups/${id}`);
-  },
-
-  // ========================
-  // Student operations
-  // ========================
-
-  /**
-   * Get students in a group
-   * @param groupId - Group ID
-   * @returns List of students
-   */
-  async getGroupStudents(groupId: string): Promise<Participant[]> {
-    const response = await api.get<Participant[]>(
-      `/groups/${groupId}/students`
-    );
-    return response.data;
-  },
-
-  /**
-   * Get all students (all groups)
-   * @param params - Query parameters
-   * @returns Paginated list of students
-   */
-  async getAllStudents(params?: {
-    page?: number;
-    size?: number;
-    search?: string;
-  }): Promise<PaginatedResponse<Participant>> {
-    const response = await api.get<PaginatedResponse<Participant>>(
-      "/students",
-      { params }
-    );
-    return response.data;
-  },
-
-  /**
-   * Add student to group
-   * @param groupId - Group ID
-   * @param data - Student data
-   * @returns Added student
-   */
-  async addStudent(
-    groupId: string,
-    data: AddStudentRequest
-  ): Promise<Participant> {
-    const response = await api.post<Participant>(
-      `/groups/${groupId}/students`,
-      data
-    );
-    return response.data;
-  },
-
-  /**
-   * Remove student from group
-   * @param groupId - Group ID
-   * @param studentId - Student ID
-   */
-  async removeStudent(groupId: string, studentId: string): Promise<void> {
-    await api.delete(`/groups/${groupId}/students/${studentId}`);
-  },
-
-  /**
-   * Move student to different group
-   * @param studentId - Student ID
-   * @param newGroupId - New group ID
-   * @returns Updated student
-   */
-  async moveStudent(
-    studentId: string,
-    newGroupId: string
-  ): Promise<Participant> {
-    const response = await api.patch<Participant>(
-      `/students/${studentId}/group`,
-      {
-        group_id: newGroupId,
-      }
-    );
-    return response.data;
-  },
-
-  /**
-   * Bulk import students from CSV
-   * @param groupId - Target group ID
-   * @param file - CSV file
-   * @returns Import result
-   */
-  async importStudentsFromCsv(
-    groupId: string,
-    file: File
-  ): Promise<{
-    imported: number;
-    failed: number;
-    errors: string[];
-  }> {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await api.post(`/groups/${groupId}/import`, formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
-    return response.data;
-  },
-
-  /**
-   * Bulk add students to group
-   * @param data - Bulk import data
-   * @returns Import result
-   */
-  async bulkAddStudents(data: BulkImportRequest): Promise<{
-    imported: number;
-    failed: number;
-    errors: string[];
-  }> {
-    const response = await api.post(`/groups/${data.groupId}/students/bulk`, {
-      students: data.students,
-    });
-    return response.data;
+    await api.delete(`/participants/groups/${id}`);
   },
 
   // ========================

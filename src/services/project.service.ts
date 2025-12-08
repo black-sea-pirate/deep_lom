@@ -91,7 +91,7 @@ export const projectService = {
     id: string,
     data: UpdateProjectRequest
   ): Promise<Project> {
-    const response = await api.patch<Project>(`/projects/${id}`, data);
+    const response = await api.put<Project>(`/projects/${id}`, data);
     return response.data;
   },
 
@@ -110,6 +110,84 @@ export const projectService = {
    */
   async duplicateProject(id: string): Promise<Project> {
     const response = await api.post<Project>(`/projects/${id}/duplicate`);
+    return response.data;
+  },
+
+  /**
+   * Add materials to project
+   * @param id - Project ID
+   * @param materialIds - Array of material IDs to add
+   * @returns Updated project
+   */
+  async addMaterials(id: string, materialIds: string[]): Promise<Project> {
+    const response = await api.post<Project>(`/projects/${id}/materials`, {
+      material_ids: materialIds,
+    });
+    return response.data;
+  },
+
+  /**
+   * Configure project settings
+   * @param id - Project ID
+   * @param settings - Project settings
+   * @returns Updated project
+   */
+  async configureSettings(
+    id: string,
+    settings: {
+      totalTime?: number;
+      timePerQuestion?: number;
+      maxStudents?: number;
+      numVariants?: number;
+      testLanguage?: string;
+      questionTypes: Array<{ type: string; count: number }>;
+    },
+    startTime?: Date,
+    endTime?: Date
+  ): Promise<Project> {
+    const response = await api.put<Project>(`/projects/${id}/settings`, {
+      settings: {
+        total_time: settings.totalTime,
+        time_per_question: settings.timePerQuestion,
+        max_students: settings.maxStudents,
+        num_variants: settings.numVariants,
+        test_language: settings.testLanguage,
+        question_types: settings.questionTypes,
+      },
+      start_time: startTime?.toISOString(),
+      end_time: endTime?.toISOString(),
+    });
+    return response.data;
+  },
+
+  /**
+   * Start vectorization of project materials
+   * @param id - Project ID
+   * @returns Vectorization status
+   */
+  async startVectorization(id: string): Promise<{
+    status: string;
+    progress: number;
+    materialsTotal: number;
+    materialsProcessed: number;
+  }> {
+    const response = await api.post(`/projects/${id}/vectorize`);
+    return response.data;
+  },
+
+  /**
+   * Get vectorization status
+   * @param id - Project ID
+   * @returns Current vectorization status
+   */
+  async getVectorizationStatus(id: string): Promise<{
+    status: string;
+    progress: number;
+    error?: string;
+    materialsTotal: number;
+    materialsProcessed: number;
+  }> {
+    const response = await api.get(`/projects/${id}/vectorization-status`);
     return response.data;
   },
 
@@ -194,6 +272,51 @@ export const projectService = {
     scoreDistribution: Record<string, number>;
   }> {
     const response = await api.get(`/projects/${id}/statistics`);
+    return response.data;
+  },
+
+  // ==================== Project Students Management ====================
+
+  /**
+   * Get list of allowed students for a project
+   * @param id - Project ID
+   * @returns Array of student emails
+   */
+  async getProjectStudents(id: string): Promise<string[]> {
+    const response = await api.get<string[]>(`/projects/${id}/students`);
+    return response.data;
+  },
+
+  /**
+   * Add a student to project by email
+   * @param id - Project ID
+   * @param email - Student email
+   * @returns Updated students list
+   */
+  async addStudentToProject(
+    id: string,
+    email: string
+  ): Promise<{ message: string; students: string[] }> {
+    const response = await api.post<{ message: string; students: string[] }>(
+      `/projects/${id}/students`,
+      { email }
+    );
+    return response.data;
+  },
+
+  /**
+   * Remove a student from project
+   * @param id - Project ID
+   * @param email - Student email to remove
+   * @returns Updated students list
+   */
+  async removeStudentFromProject(
+    id: string,
+    email: string
+  ): Promise<{ message: string; students: string[] }> {
+    const response = await api.delete<{ message: string; students: string[] }>(
+      `/projects/${id}/students/${encodeURIComponent(email)}`
+    );
     return response.data;
   },
 };

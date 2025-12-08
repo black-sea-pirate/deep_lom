@@ -1,136 +1,323 @@
 import { defineStore } from "pinia";
-import { ref } from "vue";
-import type { Project, QuestionType } from "@/types";
+import { ref, computed } from "vue";
+import type { Project } from "@/types";
+import {
+  projectService,
+  type CreateProjectRequest,
+  type UpdateProjectRequest,
+} from "@/services";
 
 export const useProjectStore = defineStore("project", () => {
-  const projects = ref<Project[]>([
-    {
-      id: "1",
-      teacherId: "1",
-      title: "Linear Equations",
-      description: "Advanced mathematics course for engineering students",
-      groupName: "KN420-Б",
-      settings: {
-        totalTime: 60,
-        timePerQuestion: 120,
-        questionTypes: [
-          { type: "single-choice" as QuestionType, count: 10 },
-          { type: "multiple-choice" as QuestionType, count: 5 },
-          { type: "short-answer" as QuestionType, count: 3 },
-        ],
-        maxStudents: 30,
-      },
-      status: "ready",
-      createdAt: new Date("2025-10-20"),
-      materials: [
-        {
-          id: "m1",
-          projectId: "1",
-          fileName: "linear_equations_theory.pdf",
-          fileType: "pdf",
-          filePath: "/uploads/linear_equations_theory.pdf",
-          uploadedAt: new Date("2025-10-20"),
-        },
-      ],
-      tests: [],
-    },
-    {
-      id: "2",
-      teacherId: "1",
-      title: "Quantum Physics Introduction",
-      description: "Introduction to quantum mechanics",
-      groupName: "PH301-A",
-      settings: {
-        totalTime: 90,
-        timePerQuestion: 180,
-        questionTypes: [
-          { type: "single-choice" as QuestionType, count: 8 },
-          { type: "essay" as QuestionType, count: 2 },
-        ],
-        maxStudents: 25,
-      },
-      status: "draft",
-      createdAt: new Date("2025-10-25"),
-      materials: [],
-      tests: [],
-    },
-  ]);
-
+  const projects = ref<Project[]>([]);
   const currentProject = ref<Project | null>(null);
   const loading = ref(false);
+  const error = ref<string | null>(null);
+  const totalProjects = ref(0);
+  const currentPage = ref(1);
+  const pageSize = ref(20);
 
-  const createProject = async (projectData: Partial<Project>) => {
+  // Computed
+  const hasProjects = computed(() => projects.value.length > 0);
+  const totalPages = computed(() =>
+    Math.ceil(totalProjects.value / pageSize.value)
+  );
+
+  /**
+   * Fetch all projects for current teacher
+   */
+  const fetchProjects = async (params?: {
+    page?: number;
+    status?: string;
+    search?: string;
+  }) => {
     loading.value = true;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    error.value = null;
 
-    const newProject: Project = {
-      id: Date.now().toString(),
-      teacherId: "1",
-      title: projectData.title || "",
-      description: projectData.description || "",
-      groupName: projectData.groupName || "",
-      settings: projectData.settings || {
-        totalTime: 60,
-        timePerQuestion: 120,
-        questionTypes: [],
-        maxStudents: 30,
-      },
-      status: "draft",
-      createdAt: new Date(),
-      materials: [],
-      tests: [],
-    };
+    try {
+      const response = await projectService.getProjects({
+        page: params?.page || currentPage.value,
+        size: pageSize.value,
+        status: params?.status,
+        search: params?.search,
+      });
 
-    projects.value.push(newProject);
-    loading.value = false;
-    return newProject;
-  };
-
-  const updateProject = async (id: string, projectData: Partial<Project>) => {
-    loading.value = true;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    const index = projects.value.findIndex((p) => p.id === id);
-    if (index !== -1) {
-      projects.value[index] = { ...projects.value[index], ...projectData };
+      projects.value = response.items;
+      totalProjects.value = response.total;
+      currentPage.value = response.page;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to fetch projects";
+      throw err;
+    } finally {
+      loading.value = false;
     }
-
-    loading.value = false;
   };
 
+  /**
+   * Fetch single project by ID
+   */
+  const fetchProject = async (id: string) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const project = await projectService.getProject(id);
+      currentProject.value = project;
+
+      // Update in projects list if exists
+      const index = projects.value.findIndex((p) => p.id === id);
+      if (index !== -1) {
+        projects.value[index] = project;
+      }
+
+      return project;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to fetch project";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Create new project
+   */
+  const createProject = async (projectData: CreateProjectRequest) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const newProject = await projectService.createProject(projectData);
+      projects.value.unshift(newProject);
+      totalProjects.value++;
+      return newProject;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to create project";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Update existing project
+   */
+  const updateProject = async (
+    id: string,
+    projectData: UpdateProjectRequest
+  ) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const updatedProject = await projectService.updateProject(
+        id,
+        projectData
+      );
+
+      // Update in projects list
+      const index = projects.value.findIndex((p) => p.id === id);
+      if (index !== -1) {
+        projects.value[index] = updatedProject;
+      }
+
+      // Update current project if it's the one being edited
+      if (currentProject.value?.id === id) {
+        currentProject.value = updatedProject;
+      }
+
+      return updatedProject;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to update project";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Delete project
+   */
   const deleteProject = async (id: string) => {
     loading.value = true;
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    error.value = null;
 
-    projects.value = projects.value.filter((p) => p.id !== id);
-    loading.value = false;
+    try {
+      await projectService.deleteProject(id);
+      projects.value = projects.value.filter((p) => p.id !== id);
+      totalProjects.value--;
+
+      if (currentProject.value?.id === id) {
+        currentProject.value = null;
+      }
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to delete project";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
   };
 
-  const getProject = (id: string) => {
+  /**
+   * Get project by ID from local state (no API call)
+   */
+  const getProject = (id: string): Project | undefined => {
     return projects.value.find((p) => p.id === id);
   };
 
+  /**
+   * Trigger AI test generation for project
+   */
   const generateTests = async (projectId: string) => {
     loading.value = true;
-    // Simulate GPT test generation
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    error.value = null;
 
-    const project = getProject(projectId);
-    if (project) {
-      project.status = "ready";
+    try {
+      const result = await projectService.generateTests(projectId);
+
+      // Poll for generation status
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes max (5s interval)
+
+      const pollStatus = async (): Promise<void> => {
+        if (attempts >= maxAttempts) {
+          throw new Error("Test generation timed out");
+        }
+
+        const status = await projectService.getGenerationStatus(
+          projectId,
+          result.jobId
+        );
+
+        if (status.status === "completed") {
+          // Refresh project to get updated questions
+          await fetchProject(projectId);
+          return;
+        } else if (status.status === "failed") {
+          throw new Error(status.message || "Test generation failed");
+        }
+
+        // Wait and poll again
+        attempts++;
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        return pollStatus();
+      };
+
+      await pollStatus();
+    } catch (err: any) {
+      error.value =
+        err.response?.data?.detail || err.message || "Failed to generate tests";
+      throw err;
+    } finally {
+      loading.value = false;
     }
+  };
 
-    loading.value = false;
+  /**
+   * Activate project (make it available for students)
+   */
+  const activateProject = async (id: string) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const updatedProject = await projectService.activateProject(id);
+
+      const index = projects.value.findIndex((p) => p.id === id);
+      if (index !== -1) {
+        projects.value[index] = updatedProject;
+      }
+
+      if (currentProject.value?.id === id) {
+        currentProject.value = updatedProject;
+      }
+
+      return updatedProject;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to activate project";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Complete project
+   */
+  const completeProject = async (id: string) => {
+    loading.value = true;
+    error.value = null;
+
+    try {
+      const updatedProject = await projectService.completeProject(id);
+
+      const index = projects.value.findIndex((p) => p.id === id);
+      if (index !== -1) {
+        projects.value[index] = updatedProject;
+      }
+
+      if (currentProject.value?.id === id) {
+        currentProject.value = updatedProject;
+      }
+
+      return updatedProject;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to complete project";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Get project statistics
+   */
+  const getProjectStatistics = async (id: string) => {
+    try {
+      return await projectService.getProjectStatistics(id);
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Failed to get statistics";
+      throw err;
+    }
+  };
+
+  /**
+   * Clear error state
+   */
+  const clearError = () => {
+    error.value = null;
+  };
+
+  /**
+   * Set current project
+   */
+  const setCurrentProject = (project: Project | null) => {
+    currentProject.value = project;
   };
 
   return {
+    // State
     projects,
     currentProject,
     loading,
+    error,
+    totalProjects,
+    currentPage,
+    pageSize,
+    // Getters
+    hasProjects,
+    totalPages,
+    // Actions
+    fetchProjects,
+    fetchProject,
     createProject,
     updateProject,
     deleteProject,
     getProject,
     generateTests,
+    activateProject,
+    completeProject,
+    getProjectStatistics,
+    clearError,
+    setCurrentProject,
   };
 });

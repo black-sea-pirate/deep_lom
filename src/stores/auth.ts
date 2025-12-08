@@ -1,41 +1,51 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { User } from "@/types";
+import { authService } from "@/services";
 
 export const useAuthStore = defineStore("auth", () => {
   const user = ref<User | null>(null);
   const token = ref<string | null>(localStorage.getItem("token"));
+  const refreshToken = ref<string | null>(localStorage.getItem("refreshToken"));
+  const loading = ref(false);
+  const error = ref<string | null>(null);
+  const initialized = ref(false); // Флаг что checkAuth завершился
 
-  const isAuthenticated = computed(() => !!token.value);
+  const isAuthenticated = computed(() => !!token.value && !!user.value);
+  const hasToken = computed(() => !!token.value); // Для быстрой проверки до checkAuth
   const isTeacher = computed(() => user.value?.role === "teacher");
   const isStudent = computed(() => user.value?.role === "student");
 
-  // Mock login
+  /**
+   * Login user with email and password
+   */
   const login = async (
     email: string,
     password: string,
-    role: "teacher" | "student"
+    _role: "teacher" | "student" // Role is determined by backend
   ) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    loading.value = true;
+    error.value = null;
 
-    const mockUser: User = {
-      id: "1",
-      email,
-      role,
-      firstName: role === "teacher" ? "John" : "Jane",
-      lastName: role === "teacher" ? "Doe" : "Smith",
-      createdAt: new Date(),
-    };
+    try {
+      const response = await authService.login({ email, password });
 
-    user.value = mockUser;
-    token.value = "mock-jwt-token-" + Date.now();
-    localStorage.setItem("token", token.value);
+      user.value = response.user;
+      token.value = response.access_token;
+      localStorage.setItem("token", response.access_token);
 
-    return mockUser;
+      return response.user;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Login failed";
+      throw err;
+    } finally {
+      loading.value = false;
+    }
   };
 
-  // Mock register
+  /**
+   * Register new user
+   */
   const register = async (
     email: string,
     password: string,
@@ -43,55 +53,147 @@ export const useAuthStore = defineStore("auth", () => {
     lastName: string,
     role: "teacher" | "student"
   ) => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    loading.value = true;
+    error.value = null;
 
-    const mockUser: User = {
-      id: Date.now().toString(),
-      email,
-      role,
-      firstName,
-      lastName,
-      createdAt: new Date(),
-    };
+    try {
+      const response = await authService.register({
+        email,
+        password,
+        firstName,
+        lastName,
+        role,
+      });
 
-    user.value = mockUser;
-    token.value = "mock-jwt-token-" + Date.now();
-    localStorage.setItem("token", token.value);
+      user.value = response.user;
+      token.value = response.access_token;
+      localStorage.setItem("token", response.access_token);
 
-    return mockUser;
-  };
-
-  const logout = () => {
-    user.value = null;
-    token.value = null;
-    localStorage.removeItem("token");
-  };
-
-  // Auto-login if token exists
-  const checkAuth = async () => {
-    if (token.value) {
-      // Simulate fetching user from token
-      user.value = {
-        id: "1",
-        email: "demo@example.com",
-        role: "teacher",
-        firstName: "John",
-        lastName: "Doe",
-        createdAt: new Date(),
-      };
+      return response.user;
+    } catch (err: any) {
+      error.value = err.response?.data?.detail || "Registration failed";
+      throw err;
+    } finally {
+      loading.value = false;
     }
   };
 
+  /**
+   * Logout current user
+   */
+  const logout = async () => {
+    try {
+      await authService.logout();
+    } catch {
+      // Ignore logout API errors
+    } finally {
+      user.value = null;
+      token.value = null;
+      refreshToken.value = null;
+      localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
+    }
+  };
+
+  /**
+   * Check authentication status and fetch current user
+   */
+  const checkAuth = async () => {
+    if (!token.value) {
+      user.value = null;
+      initialized.value = true;
+      return;
+    }
+
+    loading.value = true;
+    try {
+      const currentUser = await authService.getCurrentUser();
+      user.value = currentUser;
+    } catch (err) {
+      // Token is invalid or expired
+      user.value = null;
+      token.value = null;
+      localStorage.removeItem("token");
+    } finally {
+      loading.value = false;
+      initialized.value = true;
+    }
+  };
+
+  /**
+   * Refresh access token
+   */
+  const refreshAccessToken = async () => {
+    if (!refreshToken.value) {
+      throw new Error("No refresh token available");
+    }
+
+    try {
+      const response = await authService.refreshToken();
+      token.value = response.access_token;
+      localStorage.setItem("token", response.access_token);
+      return response.access_token;
+    } catch (err) {
+      // Refresh failed, logout user
+      await logout();
+      throw err;
+    }
+  };
+
+  /**
+   * Update user profile
+   */
+  const updateProfile = async (userData: Partial<User>) => {
+    loading.value = true;
+    try {
+      const updatedUser = await authService.updateProfile(userData);
+      user.value = updatedUser;
+      return updatedUser;
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Change user password
+   */
+  const changePassword = async (oldPassword: string, newPassword: string) => {
+    loading.value = true;
+    try {
+      await authService.changePassword(oldPassword, newPassword);
+    } finally {
+      loading.value = false;
+    }
+  };
+
+  /**
+   * Clear error state
+   */
+  const clearError = () => {
+    error.value = null;
+  };
+
   return {
+    // State
     user,
     token,
+    refreshToken,
+    loading,
+    error,
+    initialized,
+    // Getters
     isAuthenticated,
+    hasToken,
     isTeacher,
     isStudent,
+    // Actions
     login,
     register,
     logout,
     checkAuth,
+    refreshAccessToken,
+    updateProfile,
+    changePassword,
+    clearError,
   };
 });

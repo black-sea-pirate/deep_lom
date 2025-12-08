@@ -9,10 +9,11 @@
  * - Top performing students
  * - Project performance comparison
  */
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useI18n } from "vue-i18n";
+import { ElMessage } from "element-plus";
 import ThemeToggle from "@/components/ThemeToggle.vue";
 import {
   TrendCharts,
@@ -24,6 +25,14 @@ import {
   ArrowUp,
   ArrowDown,
 } from "@element-plus/icons-vue";
+import {
+  analyticsService,
+  type OverviewStats,
+  type ScoreDistributionItem,
+  type RecentTest,
+  type TopStudent,
+  type ProjectPerformance,
+} from "@/services";
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -33,106 +42,50 @@ const { t } = useI18n();
 const loading = ref(false);
 const selectedPeriod = ref("month");
 
-// Mock analytics data
-const overviewStats = ref({
-  totalTests: 24,
-  totalStudents: 156,
-  avgScore: 78.5,
-  completionRate: 92,
-  avgTimeMinutes: 42,
-  testsThisMonth: 8,
-  scoreChange: 3.2, // positive = improvement
-  studentsChange: 12,
+// Analytics data from API
+const overviewStats = ref<OverviewStats>({
+  totalTests: 0,
+  totalStudents: 0,
+  avgScore: 0,
+  completionRate: 0,
+  avgTimeMinutes: 0,
+  testsThisMonth: 0,
+  scoreChange: 0,
+  studentsChange: 0,
 });
 
-// Mock score distribution data
-const scoreDistribution = ref([
-  { range: "0-20", count: 3, percentage: 2 },
-  { range: "21-40", count: 8, percentage: 5 },
-  { range: "41-60", count: 25, percentage: 16 },
-  { range: "61-80", count: 68, percentage: 44 },
-  { range: "81-100", count: 52, percentage: 33 },
-]);
+const scoreDistribution = ref<ScoreDistributionItem[]>([]);
+const recentTests = ref<RecentTest[]>([]);
+const topStudents = ref<TopStudent[]>([]);
+const projectPerformance = ref<ProjectPerformance[]>([]);
 
-// Mock recent tests data
-const recentTests = ref([
-  {
-    id: "test-1",
-    projectName: "Linear Algebra Final",
-    date: new Date("2024-11-20"),
-    participants: 32,
-    avgScore: 75.4,
-    passRate: 88,
-  },
-  {
-    id: "test-2",
-    projectName: "Physics Midterm",
-    date: new Date("2024-11-18"),
-    participants: 45,
-    avgScore: 82.1,
-    passRate: 94,
-  },
-  {
-    id: "test-3",
-    projectName: "Programming Quiz 5",
-    date: new Date("2024-11-15"),
-    participants: 28,
-    avgScore: 71.8,
-    passRate: 79,
-  },
-  {
-    id: "test-4",
-    projectName: "Chemistry Lab Test",
-    date: new Date("2024-11-12"),
-    participants: 36,
-    avgScore: 68.9,
-    passRate: 72,
-  },
-  {
-    id: "test-5",
-    projectName: "Math Quiz 4",
-    date: new Date("2024-11-10"),
-    participants: 41,
-    avgScore: 85.2,
-    passRate: 96,
-  },
-]);
+// Load analytics data
+const loadAnalytics = async () => {
+  loading.value = true;
+  try {
+    const data = await analyticsService.getAnalytics(selectedPeriod.value);
+    overviewStats.value = data.overview;
+    scoreDistribution.value = data.scoreDistribution;
+    recentTests.value = data.recentTests;
+    topStudents.value = data.topStudents;
+    projectPerformance.value = data.projectPerformance;
+  } catch (error) {
+    console.error("Failed to load analytics:", error);
+    ElMessage.error(t("analyticsPage.loadError") || "Failed to load analytics");
+  } finally {
+    loading.value = false;
+  }
+};
 
-// Mock top students data
-const topStudents = ref([
-  { id: "s1", name: "Alice Williams", avgScore: 95.2, testsCompleted: 8 },
-  { id: "s2", name: "John Doe", avgScore: 92.8, testsCompleted: 7 },
-  { id: "s3", name: "Jane Smith", avgScore: 91.5, testsCompleted: 8 },
-  { id: "s4", name: "Bob Johnson", avgScore: 89.3, testsCompleted: 6 },
-  { id: "s5", name: "Charlie Brown", avgScore: 87.9, testsCompleted: 8 },
-]);
+// Watch for period changes
+watch(selectedPeriod, () => {
+  loadAnalytics();
+});
 
-// Mock project performance data
-const projectPerformance = ref([
-  {
-    name: "Linear Algebra",
-    avgScore: 76.2,
-    tests: 6,
-    students: 45,
-    trend: "up",
-  },
-  { name: "Physics 101", avgScore: 82.5, tests: 4, students: 52, trend: "up" },
-  {
-    name: "Programming",
-    avgScore: 71.3,
-    tests: 8,
-    students: 38,
-    trend: "down",
-  },
-  {
-    name: "Chemistry",
-    avgScore: 68.9,
-    tests: 3,
-    students: 41,
-    trend: "stable",
-  },
-  { name: "Mathematics", avgScore: 85.1, tests: 5, students: 48, trend: "up" },
-]);
+// Initialize on mount
+onMounted(() => {
+  loadAnalytics();
+});
 
 // Period options
 const periodOptions = [

@@ -36,6 +36,7 @@ export interface RegisterRequest {
  */
 export interface AuthResponse {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   user: User;
 }
@@ -53,6 +54,14 @@ export interface PasswordResetRequest {
 export interface PasswordResetConfirm {
   token: string;
   newPassword: string;
+}
+
+/**
+ * Token refresh response
+ */
+export interface TokenRefreshResponse {
+  access_token: string;
+  token_type: string;
 }
 
 /**
@@ -76,9 +85,12 @@ export const authService = {
       },
     });
 
-    // Store token in localStorage
+    // Store tokens in localStorage
     if (response.data.access_token) {
       localStorage.setItem("token", response.data.access_token);
+    }
+    if (response.data.refresh_token) {
+      localStorage.setItem("refreshToken", response.data.refresh_token);
     }
 
     return response.data;
@@ -90,11 +102,20 @@ export const authService = {
    * @returns Authentication response with token and user
    */
   async register(userData: RegisterRequest): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/auth/register", userData);
+    const response = await api.post<AuthResponse>("/auth/register", {
+      email: userData.email,
+      password: userData.password,
+      first_name: userData.firstName,
+      last_name: userData.lastName,
+      role: userData.role,
+    });
 
-    // Store token in localStorage
+    // Store tokens in localStorage
     if (response.data.access_token) {
       localStorage.setItem("token", response.data.access_token);
+    }
+    if (response.data.refresh_token) {
+      localStorage.setItem("refreshToken", response.data.refresh_token);
     }
 
     return response.data;
@@ -102,14 +123,15 @@ export const authService = {
 
   /**
    * Logout current user
-   * Clears token from localStorage
+   * Clears tokens from localStorage
    */
   async logout(): Promise<void> {
     try {
       await api.post("/auth/logout");
     } finally {
-      // Always clear token, even if API call fails
+      // Always clear tokens, even if API call fails
       localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
     }
   },
 
@@ -123,11 +145,19 @@ export const authService = {
   },
 
   /**
-   * Refresh access token
-   * @returns New authentication response
+   * Refresh access token using refresh token
+   * @returns New token response
    */
-  async refreshToken(): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/auth/refresh");
+  async refreshToken(): Promise<TokenRefreshResponse> {
+    const refreshToken = localStorage.getItem("refreshToken");
+
+    if (!refreshToken) {
+      throw new Error("No refresh token available");
+    }
+
+    const response = await api.post<TokenRefreshResponse>("/auth/refresh", {
+      refresh_token: refreshToken,
+    });
 
     if (response.data.access_token) {
       localStorage.setItem("token", response.data.access_token);
@@ -158,7 +188,10 @@ export const authService = {
    * @returns Updated user
    */
   async updateProfile(userData: Partial<User>): Promise<User> {
-    const response = await api.patch<User>("/auth/me", userData);
+    const response = await api.patch<User>("/auth/me", {
+      first_name: userData.firstName,
+      last_name: userData.lastName,
+    });
     return response.data;
   },
 
@@ -172,9 +205,33 @@ export const authService = {
     newPassword: string
   ): Promise<void> {
     await api.post("/auth/change-password", {
-      old_password: oldPassword,
+      current_password: oldPassword,
       new_password: newPassword,
     });
+  },
+
+  /**
+   * Check if user is authenticated
+   * @returns true if user has a valid token
+   */
+  isAuthenticated(): boolean {
+    return !!localStorage.getItem("token");
+  },
+
+  /**
+   * Get stored access token
+   * @returns Access token or null
+   */
+  getToken(): string | null {
+    return localStorage.getItem("token");
+  },
+
+  /**
+   * Get stored refresh token
+   * @returns Refresh token or null
+   */
+  getRefreshToken(): string | null {
+    return localStorage.getItem("refreshToken");
   },
 };
 

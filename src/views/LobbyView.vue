@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProjectStore } from "@/stores/project";
 import { useI18n } from "vue-i18n";
-import { ElMessage } from "element-plus";
-import { Message, Clock } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { Message, Clock, Refresh, User } from "@element-plus/icons-vue";
+import { projectService } from "@/services/project.service";
+import {
+  participantService,
+  type Participant,
+} from "@/services/participant.service";
 
 const route = useRoute();
 const router = useRouter();
@@ -14,103 +19,170 @@ const { t } = useI18n();
 const projectId = route.params.id as string;
 const project = computed(() => projectStore.getProject(projectId));
 
-// Mock students data
-const waitingStudents = ref([
-  {
-    id: "1",
-    firstName: "Alice",
-    lastName: "Johnson",
-    email: "alice@uni.edu",
-    status: "ready",
-  },
-  {
-    id: "2",
-    firstName: "Bob",
-    lastName: "Smith",
-    email: "bob@uni.edu",
-    status: "waiting",
-  },
-  {
-    id: "3",
-    firstName: "Carol",
-    lastName: "Williams",
-    email: "carol@uni.edu",
-    status: "ready",
-  },
-]);
+// Real students data from backend
+const allowedStudents = ref<string[]>([]);
+const loading = ref(false);
+const addingStudent = ref(false);
 
-const newStudentEmail = ref("");
+// Confirmed contacts from teacher's database
+const confirmedContacts = ref<Participant[]>([]);
+const selectedStudentEmail = ref<string>("");
+const loadingContacts = ref(false);
+
 const showScheduleDialog = ref(false);
 const scheduleForm = ref({
   startTime: new Date(),
   endTime: new Date(Date.now() + 5 * 60 * 60 * 1000), // +5 hours
 });
 
-const handleAddStudent = () => {
-  if (!newStudentEmail.value) {
-    ElMessage.warning(t("teacher.studentEmail") + " required");
+// Load project and students on mount
+onMounted(async () => {
+  await loadProject();
+  await Promise.all([loadStudents(), loadConfirmedContacts()]);
+});
+
+const loadProject = async () => {
+  try {
+    await projectStore.fetchProject(projectId);
+  } catch (error) {
+    console.error("Error loading project:", error);
+    ElMessage.error("Failed to load project");
+  }
+};
+
+const loadStudents = async () => {
+  loading.value = true;
+  try {
+    allowedStudents.value = await projectService.getProjectStudents(projectId);
+  } catch (error) {
+    console.error("Error loading students:", error);
+    // Initialize empty if endpoint fails
+    allowedStudents.value = [];
+  } finally {
+    loading.value = false;
+  }
+};
+
+const loadConfirmedContacts = async () => {
+  loadingContacts.value = true;
+  try {
+    confirmedContacts.value =
+      await participantService.getConfirmedParticipants();
+  } catch (error) {
+    console.error("Error loading confirmed contacts:", error);
+    confirmedContacts.value = [];
+  } finally {
+    loadingContacts.value = false;
+  }
+};
+
+// Available contacts (not already in project)
+const availableContacts = computed(() => {
+  return confirmedContacts.value.filter(
+    (contact) => !allowedStudents.value.includes(contact.email.toLowerCase())
+  );
+});
+
+const handleAddStudent = async () => {
+  const email = selectedStudentEmail.value?.trim().toLowerCase();
+
+  if (!email) {
+    ElMessage.warning(t("teacher.selectStudent") || "Please select a student");
     return;
   }
 
-  const exists = waitingStudents.value.some(
-    (s) => s.email === newStudentEmail.value
-  );
-  if (exists) {
-    ElMessage.warning("Student already in lobby");
+  if (allowedStudents.value.includes(email)) {
+    ElMessage.warning("Student already added to this project");
     return;
   }
 
-  waitingStudents.value.push({
-    id: Date.now().toString(),
-    firstName: "New",
-    lastName: "Student",
-    email: newStudentEmail.value,
-    status: "waiting",
-  });
-
-  ElMessage.success("Student added successfully");
-  newStudentEmail.value = "";
+  addingStudent.value = true;
+  try {
+    const result = await projectService.addStudentToProject(projectId, email);
+    allowedStudents.value = result.students;
+    ElMessage.success("Student added successfully");
+    selectedStudentEmail.value = "";
+  } catch (error: any) {
+    console.error("Error adding student:", error);
+    ElMessage.error(error.response?.data?.detail || "Failed to add student");
+  } finally {
+    addingStudent.value = false;
+  }
 };
 
-const handleRemoveStudent = (studentId: string) => {
-  waitingStudents.value = waitingStudents.value.filter(
-    (s) => s.id !== studentId
-  );
-  ElMessage.success("Student removed from lobby");
-};
+const handleRemoveStudent = async (email: string) => {
+  try {
+    await ElMessageBox.confirm(
+      `Remove ${email} from this project?`,
+      "Confirm Removal",
+      {
+        confirmButtonText: "Remove",
+        cancelButtonText: "Cancel",
+        type: "warning",
+      }
+    );
 
-const handleStartTest = () => {
-  ElMessage.success("Test started! All students can now begin.");
-  if (project.value) {
-    projectStore.updateProject(projectId, { status: "active" });
+    const result = await projectService.removeStudentFromProject(
+      projectId,
+      email
+    );
+    allowedStudents.value = result.students;
+    ElMessage.success("Student removed from project");
+  } catch (error: any) {
+    if (error !== "cancel") {
+      console.error("Error removing student:", error);
+      ElMessage.error(
+        error.response?.data?.detail || "Failed to remove student"
+      );
+    }
   }
 };
 
 const handleScheduleTest = async () => {
   if (!project.value) return;
 
-  await projectStore.updateProject(projectId, {
-    startTime: scheduleForm.value.startTime,
-    endTime: scheduleForm.value.endTime,
-    status: "ready",
-  });
+  try {
+    await projectStore.updateProject(projectId, {
+      startTime: scheduleForm.value.startTime.toISOString(),
+      endTime: scheduleForm.value.endTime.toISOString(),
+      status: "ready",
+    });
 
-  showScheduleDialog.value = false;
-  ElMessage.success("Test scheduled successfully!");
+    showScheduleDialog.value = false;
+    ElMessage.success("Test scheduled successfully!");
+  } catch (error) {
+    console.error("Error scheduling test:", error);
+    ElMessage.error("Failed to schedule test");
+  }
 };
 
 const handleActivateNow = async () => {
   if (!project.value) return;
 
-  await projectStore.updateProject(projectId, {
-    startTime: new Date(),
-    endTime: new Date(
-      Date.now() + project.value.settings.totalTime * 60 * 1000
-    ),
-    status: "active",
-  });
+  if (allowedStudents.value.length === 0) {
+    ElMessage.warning(
+      t("teacher.addStudentFirst") ||
+        "Add at least one student before starting the test"
+    );
+    return;
+  }
 
-  ElMessage.success("Test activated!");
+  const totalTime = project.value.settings?.totalTime || 60;
+
+  try {
+    await projectStore.updateProject(projectId, {
+      startTime: new Date().toISOString(),
+      endTime: new Date(Date.now() + totalTime * 60 * 1000).toISOString(),
+      status: "active",
+    });
+
+    ElMessage.success(
+      t("teacher.testStarted") || "Test started! All students can now begin."
+    );
+  } catch (error) {
+    console.error("Error activating test:", error);
+    ElMessage.error(t("teacher.testStartFailed") || "Failed to start test");
+  }
 };
 </script>
 
@@ -134,61 +206,102 @@ const handleActivateNow = async () => {
           <el-col :xs="24" :lg="16">
             <el-card>
               <template #header>
-                <h2>
-                  {{ t("teacher.waitingStudents") }} ({{
-                    waitingStudents.length
-                  }})
-                </h2>
+                <div class="flex items-center justify-between">
+                  <h2>
+                    {{ t("teacher.waitingStudents") }} ({{
+                      allowedStudents.length
+                    }})
+                  </h2>
+                  <el-button
+                    :icon="Refresh"
+                    circle
+                    size="small"
+                    @click="loadStudents"
+                    :loading="loading"
+                  />
+                </div>
               </template>
 
               <div class="add-student-section">
-                <el-input
-                  v-model="newStudentEmail"
-                  :placeholder="t('teacher.studentEmail')"
-                  style="width: 300px; margin-right: 12px"
+                <el-select
+                  v-model="selectedStudentEmail"
+                  filterable
+                  :placeholder="
+                    t('teacher.selectStudent') || 'Select student from contacts'
+                  "
+                  style="width: 350px; margin-right: 12px"
+                  :loading="loadingContacts"
+                  :no-data-text="
+                    t('teacher.noConfirmedContacts') ||
+                    'No confirmed contacts available'
+                  "
                 >
-                  <template #prefix>
-                    <el-icon><Message /></el-icon>
-                  </template>
-                </el-input>
-                <el-button type="primary" @click="handleAddStudent">
+                  <el-option
+                    v-for="contact in availableContacts"
+                    :key="contact.id"
+                    :label="`${contact.firstName} ${contact.lastName} (${contact.email})`"
+                    :value="contact.email"
+                  >
+                    <div class="contact-option">
+                      <el-icon><User /></el-icon>
+                      <span class="contact-name"
+                        >{{ contact.firstName }} {{ contact.lastName }}</span
+                      >
+                      <span class="contact-email">{{ contact.email }}</span>
+                    </div>
+                  </el-option>
+                </el-select>
+                <el-button
+                  type="primary"
+                  @click="handleAddStudent"
+                  :loading="addingStudent"
+                  :disabled="!selectedStudentEmail"
+                >
                   {{ t("teacher.addStudent") }}
                 </el-button>
               </div>
 
+              <el-alert
+                v-if="confirmedContacts.length === 0 && !loadingContacts"
+                :title="t('teacher.noContactsTitle') || 'No confirmed contacts'"
+                type="info"
+                :description="
+                  t('teacher.noContactsDesc') ||
+                  'Add students to your contacts in Participants section and wait for them to confirm.'
+                "
+                show-icon
+                :closable="false"
+                style="margin-bottom: 16px"
+              />
+
               <el-divider />
 
-              <el-table :data="waitingStudents" style="width: 100%">
-                <el-table-column
-                  prop="firstName"
-                  :label="t('common.firstName')"
-                />
-                <el-table-column
-                  prop="lastName"
-                  :label="t('common.lastName')"
-                />
+              <el-table
+                :data="
+                  allowedStudents.map((email, index) => ({ id: index, email }))
+                "
+                style="width: 100%"
+                v-loading="loading"
+              >
+                <el-table-column type="index" width="50" label="#" />
                 <el-table-column prop="email" label="Email" />
-                <el-table-column prop="status" :label="t('teacher.status')">
-                  <template #default="{ row }">
-                    <el-tag
-                      :type="row.status === 'ready' ? 'success' : 'warning'"
-                    >
-                      {{ row.status }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
                 <el-table-column :label="t('common.actions')" width="120">
                   <template #default="{ row }">
                     <el-button
                       type="danger"
                       size="small"
-                      @click="handleRemoveStudent(row.id)"
+                      @click="handleRemoveStudent(row.email)"
                     >
                       {{ t("common.delete") }}
                     </el-button>
                   </template>
                 </el-table-column>
               </el-table>
+
+              <el-empty
+                v-if="!loading && allowedStudents.length === 0"
+                description="No students added yet"
+              />
             </el-card>
           </el-col>
 
@@ -246,16 +359,7 @@ const handleActivateNow = async () => {
                   size="large"
                   style="width: 100%; margin-top: 12px"
                   @click="handleActivateNow"
-                >
-                  {{ t("teacher.activateTest") }}
-                </el-button>
-
-                <el-button
-                  type="warning"
-                  size="large"
-                  style="width: 100%; margin-top: 12px"
-                  @click="handleStartTest"
-                  :disabled="waitingStudents.length === 0"
+                  :disabled="allowedStudents.length === 0"
                 >
                   {{ t("teacher.startTest") }}
                 </el-button>
@@ -269,17 +373,23 @@ const handleActivateNow = async () => {
 
               <el-descriptions :column="1" border>
                 <el-descriptions-item :label="t('teacher.totalTime')">
-                  {{ project?.settings.totalTime }} min
+                  {{ project?.settings?.totalTime || 60 }} min
                 </el-descriptions-item>
                 <el-descriptions-item :label="t('teacher.maxStudents')">
-                  {{ project?.settings.maxStudents }}
+                  {{
+                    project?.settings?.maxStudents ||
+                    allowedStudents.length ||
+                    "-"
+                  }}
                 </el-descriptions-item>
                 <el-descriptions-item :label="t('teacher.questionCount')">
                   {{
-                    project?.settings.questionTypes.reduce(
+                    project?.settings?.questionTypes?.reduce(
                       (sum: number, q: any) => sum + q.count,
                       0
-                    )
+                    ) ||
+                    project?.tests?.[0]?.questions?.length ||
+                    "-"
                   }}
                 </el-descriptions-item>
               </el-descriptions>
@@ -390,12 +500,28 @@ const handleActivateNow = async () => {
   }
 }
 
+.contact-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .contact-name {
+    font-weight: 500;
+  }
+
+  .contact-email {
+    color: var(--color-text-light);
+    font-size: 0.85em;
+    margin-left: auto;
+  }
+}
+
 @media (max-width: 768px) {
   .add-student-section {
     flex-direction: column;
     align-items: stretch;
 
-    .el-input {
+    .el-select {
       width: 100% !important;
       margin-right: 0 !important;
       margin-bottom: var(--spacing-md);

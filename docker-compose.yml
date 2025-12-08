@@ -1,0 +1,224 @@
+# =============================================================================
+# AI Test Platform (Mentis) - Docker Compose
+# =============================================================================
+# Run: docker-compose up -d
+# Access: https://mentis.forzone.uk
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # DATABASE - PostgreSQL 16
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: mentis_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mentis_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-MentisSecure2025!}
+      POSTGRES_DB: ${POSTGRES_DB:-mentis_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mentis_admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # CACHE & MESSAGE BROKER - Redis 7
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: mentis_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # BACKEND - FastAPI Application
+  # ===========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mentis_backend
+    restart: unless-stopped
+    environment:
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-mentis_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-MentisSecure2025!}
+      POSTGRES_DB: ${POSTGRES_DB:-mentis_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1}
+      SECRET_KEY: ${SECRET_KEY:-mentis-secret-key-2025}
+      BACKEND_CORS_ORIGINS: https://mentis.forzone.uk,http://localhost:5173
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # CELERY WORKER - Background Tasks
+  # ===========================================================================
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mentis_celery_worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info --queues=documents,tests --concurrency=2
+    environment:
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-mentis_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-MentisSecure2025!}
+      POSTGRES_DB: ${POSTGRES_DB:-mentis_db}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # NGINX - Frontend + Reverse Proxy
+  # ===========================================================================
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: mentis_nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # CLOUDFLARE TUNNEL - HTTPS Access
+  # ===========================================================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: mentis_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - nginx
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # PROMETHEUS - Metrics Collection
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    container_name: mentis_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - backend
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # GRAFANA - Metrics Visualization
+  # ===========================================================================
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: mentis_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-MentisGrafana2025!}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # REDIS EXPORTER - Redis Metrics for Prometheus
+  # ===========================================================================
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.63.0
+    container_name: mentis_redis_exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    depends_on:
+      - redis
+    networks:
+      - mentis_network
+
+  # ===========================================================================
+  # POSTGRES EXPORTER - PostgreSQL Metrics for Prometheus
+  # ===========================================================================
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: mentis_postgres_exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-mentis_admin}:${POSTGRES_PASSWORD:-MentisSecure2025!}@postgres:5432/${POSTGRES_DB:-mentis_db}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mentis_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  mentis_network:
+    driver: bridge

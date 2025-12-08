@@ -1,0 +1,42 @@
+# AI Test Platform Backend Dependencies
+
+# FastAPI and server
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# Pydantic
+pydantic==2.10.0
+pydantic-settings==2.6.0
+email-validator==2.2.0
+
+# Redis and Celery
+redis==5.2.0
+celery==5.4.0
+
+# OpenAI
+openai>=1.56.0
+
+# Document upload (optional - files stored in OpenAI)
+# Note: PyPDF2 and python-docx only needed if we want to read local files
+# for preview purposes. OpenAI handles parsing in Vector Store.
+python-multipart==0.0.12
+
+# HTTP client
+httpx==0.28.0
+
+# Monitoring
+prometheus-fastapi-instrumentator==7.0.0
+prometheus-client==0.21.0
+
+# Utilities
+python-dotenv==1.0.1

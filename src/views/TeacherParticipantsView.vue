@@ -23,6 +23,7 @@ import {
   Search,
   FolderOpened,
 } from "@element-plus/icons-vue";
+import { participantService } from "@/services/participant.service";
 import type { Participant, ParticipantGroup } from "@/types";
 
 const router = useRouter();
@@ -50,86 +51,99 @@ const studentForm = ref({
   lastName: "",
   type: "individual" as "individual" | "group-member",
   groupId: undefined as string | undefined,
+  autoFill: false,
 });
+
+// Auto-fill lookup state
+const lookingUp = ref(false);
+const studentFound = ref(false);
 
 const groupForm = ref({
   name: "",
   description: "",
 });
 
-// Mock data
-const students = ref<Participant[]>([
-  {
-    id: "student-1",
-    email: "john.doe@university.edu",
-    firstName: "John",
-    lastName: "Doe",
-    type: "group-member",
-    groupId: "group-1",
-    createdAt: new Date("2024-11-10"),
-  },
-  {
-    id: "student-2",
-    email: "jane.smith@university.edu",
-    firstName: "Jane",
-    lastName: "Smith",
-    type: "group-member",
-    groupId: "group-1",
-    createdAt: new Date("2024-11-10"),
-  },
-  {
-    id: "student-3",
-    email: "bob.johnson@university.edu",
-    firstName: "Bob",
-    lastName: "Johnson",
-    type: "individual",
-    createdAt: new Date("2024-11-12"),
-  },
-  {
-    id: "student-4",
-    email: "alice.williams@university.edu",
-    firstName: "Alice",
-    lastName: "Williams",
-    type: "group-member",
-    groupId: "group-2",
-    createdAt: new Date("2024-11-15"),
-  },
-  {
-    id: "student-5",
-    email: "charlie.brown@university.edu",
-    firstName: "Charlie",
-    lastName: "Brown",
-    type: "individual",
-    createdAt: new Date("2024-11-18"),
-  },
-]);
+// Data from API
+const students = ref<Participant[]>([]);
+const groups = ref<ParticipantGroup[]>([]);
 
-const groups = ref<ParticipantGroup[]>([
-  {
-    id: "group-1",
-    name: "CS-101 Section A",
-    description: "Computer Science Introduction - Morning Section",
-    teacherId: "teacher-1",
-    membersCount: 2,
-    createdAt: new Date("2024-11-01"),
-  },
-  {
-    id: "group-2",
-    name: "CS-101 Section B",
-    description: "Computer Science Introduction - Afternoon Section",
-    teacherId: "teacher-1",
-    membersCount: 1,
-    createdAt: new Date("2024-11-05"),
-  },
-  {
-    id: "group-3",
-    name: "Advanced Math",
-    description: "Graduate level mathematics course",
-    teacherId: "teacher-1",
-    membersCount: 0,
-    createdAt: new Date("2024-11-10"),
-  },
-]);
+// Load data from API
+const loadParticipants = async () => {
+  loading.value = true;
+  try {
+    const response = await participantService.getParticipants({
+      page: 1,
+      size: 100,
+      search: searchQuery.value || undefined,
+    });
+    students.value = response.items || [];
+  } catch (error) {
+    console.error("Failed to load participants:", error);
+    ElMessage.error(
+      t("participantsPage.loadError") || "Failed to load students"
+    );
+  } finally {
+    loading.value = false;
+  }
+};
+
+const loadGroups = async () => {
+  try {
+    const data = await participantService.getGroups();
+    groups.value = data || [];
+  } catch (error) {
+    console.error("Failed to load groups:", error);
+    ElMessage.error(
+      t("participantsPage.loadGroupsError") || "Failed to load groups"
+    );
+  }
+};
+
+// Lookup student by email for auto-fill
+const lookupStudent = async () => {
+  if (!studentForm.value.email || !studentForm.value.autoFill) return;
+
+  // Email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(studentForm.value.email)) return;
+
+  lookingUp.value = true;
+  studentFound.value = false;
+  try {
+    const result = await participantService.lookupStudent(
+      studentForm.value.email
+    );
+    if (result) {
+      studentForm.value.firstName = result.firstName || "";
+      studentForm.value.lastName = result.lastName || "";
+      studentFound.value = true;
+      ElMessage.success(
+        t("participantsPage.studentFoundInDb") || "Student found in database"
+      );
+    } else {
+      studentFound.value = false;
+      // Clear name fields if student not found
+      if (studentForm.value.autoFill) {
+        studentForm.value.firstName = "";
+        studentForm.value.lastName = "";
+      }
+      ElMessage.info(
+        t("participantsPage.studentNotFoundInDb") ||
+          "Student not found in database. Enter name manually."
+      );
+    }
+  } catch (error) {
+    console.error("Failed to lookup student:", error);
+    studentFound.value = false;
+  } finally {
+    lookingUp.value = false;
+  }
+};
+
+// Initialize on mount
+onMounted(async () => {
+  await Promise.all([loadParticipants(), loadGroups()]);
+});
 
 // Computed
 const filteredStudents = computed(() => {
@@ -170,6 +184,34 @@ const formatDate = (date: Date): string => {
   });
 };
 
+const getStatusTagType = (
+  status?: string
+): "" | "success" | "warning" | "danger" | "info" => {
+  switch (status) {
+    case "confirmed":
+      return "success";
+    case "pending":
+      return "warning";
+    case "rejected":
+      return "danger";
+    default:
+      return "info";
+  }
+};
+
+const getStatusLabel = (status?: string): string => {
+  switch (status) {
+    case "confirmed":
+      return t("participantsPage.confirmed") || "Confirmed";
+    case "pending":
+      return t("participantsPage.pending") || "Pending";
+    case "rejected":
+      return t("participantsPage.rejected") || "Rejected";
+    default:
+      return t("participantsPage.notLinked") || "Not linked";
+  }
+};
+
 // Student CRUD
 const openAddStudentDialog = () => {
   studentDialogMode.value = "create";
@@ -179,8 +221,10 @@ const openAddStudentDialog = () => {
     lastName: "",
     type: "individual",
     groupId: undefined,
+    autoFill: false,
   };
   editingStudent.value = null;
+  studentFound.value = false;
   showStudentDialog.value = true;
 };
 
@@ -192,12 +236,14 @@ const openEditStudentDialog = (student: Participant) => {
     lastName: student.lastName,
     type: student.type,
     groupId: student.groupId,
+    autoFill: false,
   };
   editingStudent.value = student;
+  studentFound.value = false;
   showStudentDialog.value = true;
 };
 
-const saveStudent = () => {
+const saveStudent = async () => {
   if (
     !studentForm.value.email ||
     !studentForm.value.firstName ||
@@ -218,93 +264,44 @@ const saveStudent = () => {
     return;
   }
 
-  if (studentDialogMode.value === "create") {
-    // Check for duplicate email
-    if (students.value.some((s) => s.email === studentForm.value.email)) {
-      ElMessage.warning(
-        t("participantsPage.duplicateEmail") ||
-          "This email is already registered"
-      );
-      return;
-    }
-
-    const newStudent: Participant = {
-      id: `student-${Date.now()}`,
-      email: studentForm.value.email,
-      firstName: studentForm.value.firstName,
-      lastName: studentForm.value.lastName,
-      type: studentForm.value.type,
-      groupId:
-        studentForm.value.type === "group-member"
-          ? studentForm.value.groupId
-          : undefined,
-      createdAt: new Date(),
-    };
-
-    students.value.push(newStudent);
-
-    // Update group member count
-    if (newStudent.groupId) {
-      const group = groups.value.find((g) => g.id === newStudent.groupId);
-      if (group) group.membersCount++;
-    }
-
-    ElMessage.success(t("participantsPage.studentAdded") || "Student added");
-  } else if (editingStudent.value) {
-    // Check for duplicate email (excluding current student)
-    if (
-      students.value.some(
-        (s) =>
-          s.email === studentForm.value.email &&
-          s.id !== editingStudent.value!.id
-      )
-    ) {
-      ElMessage.warning(
-        t("participantsPage.duplicateEmail") ||
-          "This email is already registered"
-      );
-      return;
-    }
-
-    // Update group counts
-    const oldGroupId = editingStudent.value.groupId;
-    const newGroupId =
-      studentForm.value.type === "group-member"
-        ? studentForm.value.groupId
-        : undefined;
-
-    if (oldGroupId !== newGroupId) {
-      if (oldGroupId) {
-        const oldGroup = groups.value.find((g) => g.id === oldGroupId);
-        if (oldGroup) oldGroup.membersCount--;
-      }
-      if (newGroupId) {
-        const newGroup = groups.value.find((g) => g.id === newGroupId);
-        if (newGroup) newGroup.membersCount++;
-      }
-    }
-
-    // Update student
-    const index = students.value.findIndex(
-      (s) => s.id === editingStudent.value!.id
-    );
-    if (index > -1) {
-      students.value[index] = {
-        ...editingStudent.value,
+  loading.value = true;
+  try {
+    if (studentDialogMode.value === "create") {
+      await participantService.createParticipant({
         email: studentForm.value.email,
         firstName: studentForm.value.firstName,
         lastName: studentForm.value.lastName,
         type: studentForm.value.type,
-        groupId: newGroupId,
-      };
+        groupId:
+          studentForm.value.type === "group-member"
+            ? studentForm.value.groupId
+            : undefined,
+        autoFill: studentForm.value.autoFill,
+      });
+      ElMessage.success(t("participantsPage.studentAdded") || "Student added");
+    } else if (editingStudent.value) {
+      await participantService.updateParticipant(editingStudent.value.id, {
+        email: studentForm.value.email,
+        firstName: studentForm.value.firstName,
+        lastName: studentForm.value.lastName,
+        groupId:
+          studentForm.value.type === "group-member"
+            ? studentForm.value.groupId
+            : undefined,
+      });
+      ElMessage.success(
+        t("participantsPage.studentUpdated") || "Student updated"
+      );
     }
 
-    ElMessage.success(
-      t("participantsPage.studentUpdated") || "Student updated"
-    );
+    showStudentDialog.value = false;
+    await Promise.all([loadParticipants(), loadGroups()]);
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to save student";
+    ElMessage.error(message);
+  } finally {
+    loading.value = false;
   }
-
-  showStudentDialog.value = false;
 };
 
 const deleteStudent = async (student: Participant) => {
@@ -321,22 +318,20 @@ const deleteStudent = async (student: Participant) => {
       }
     );
 
-    // Update group count
-    if (student.groupId) {
-      const group = groups.value.find((g) => g.id === student.groupId);
-      if (group) group.membersCount--;
-    }
-
-    const index = students.value.findIndex((s) => s.id === student.id);
-    if (index > -1) {
-      students.value.splice(index, 1);
-    }
-
+    loading.value = true;
+    await participantService.deleteParticipant(student.id);
     ElMessage.success(
       t("participantsPage.studentDeleted") || "Student deleted"
     );
-  } catch {
-    // User cancelled
+    await Promise.all([loadParticipants(), loadGroups()]);
+  } catch (error: any) {
+    if (error !== "cancel") {
+      const message =
+        error.response?.data?.detail || "Failed to delete student";
+      ElMessage.error(message);
+    }
+  } finally {
+    loading.value = false;
   }
 };
 
@@ -355,7 +350,7 @@ const openEditGroupDialog = (group: ParticipantGroup) => {
   showGroupDialog.value = true;
 };
 
-const saveGroup = () => {
+const saveGroup = async () => {
   if (!groupForm.value.name.trim()) {
     ElMessage.warning(
       t("participantsPage.groupNameRequired") || "Group name is required"
@@ -363,28 +358,30 @@ const saveGroup = () => {
     return;
   }
 
-  if (groupDialogMode.value === "create") {
-    const newGroup: ParticipantGroup = {
-      id: `group-${Date.now()}`,
-      name: groupForm.value.name.trim(),
-      description: groupForm.value.description.trim(),
-      teacherId: authStore.user?.id || "teacher-1",
-      membersCount: 0,
-      createdAt: new Date(),
-    };
-    groups.value.push(newGroup);
-    ElMessage.success(t("participantsPage.groupCreated") || "Group created");
-  } else if (editingGroup.value) {
-    const group = editingGroup.value;
-    const index = groups.value.findIndex((g) => g.id === group.id);
-    if (index > -1) {
-      groups.value[index].name = groupForm.value.name.trim();
-      groups.value[index].description = groupForm.value.description.trim();
+  loading.value = true;
+  try {
+    if (groupDialogMode.value === "create") {
+      await participantService.createGroup({
+        name: groupForm.value.name.trim(),
+        description: groupForm.value.description.trim() || undefined,
+      });
+      ElMessage.success(t("participantsPage.groupCreated") || "Group created");
+    } else if (editingGroup.value) {
+      await participantService.updateGroup(editingGroup.value.id, {
+        name: groupForm.value.name.trim(),
+        description: groupForm.value.description.trim() || undefined,
+      });
+      ElMessage.success(t("participantsPage.groupUpdated") || "Group updated");
     }
-    ElMessage.success(t("participantsPage.groupUpdated") || "Group updated");
-  }
 
-  showGroupDialog.value = false;
+    showGroupDialog.value = false;
+    await loadGroups();
+  } catch (error: any) {
+    const message = error.response?.data?.detail || "Failed to save group";
+    ElMessage.error(message);
+  } finally {
+    loading.value = false;
+  }
 };
 
 const deleteGroup = async (group: ParticipantGroup) => {
@@ -406,20 +403,17 @@ const deleteGroup = async (group: ParticipantGroup) => {
       type: "warning",
     });
 
-    // Move members to individual
-    groupMembersList.forEach((member) => {
-      member.type = "individual";
-      member.groupId = undefined;
-    });
-
-    const index = groups.value.findIndex((g) => g.id === group.id);
-    if (index > -1) {
-      groups.value.splice(index, 1);
-    }
-
+    loading.value = true;
+    await participantService.deleteGroup(group.id);
     ElMessage.success(t("participantsPage.groupDeleted") || "Group deleted");
-  } catch {
-    // User cancelled
+    await Promise.all([loadParticipants(), loadGroups()]);
+  } catch (error: any) {
+    if (error !== "cancel") {
+      const message = error.response?.data?.detail || "Failed to delete group";
+      ElMessage.error(message);
+    }
+  } finally {
+    loading.value = false;
   }
 };
 
@@ -566,6 +560,20 @@ const handleLogout = () => {
                 >
                   <template #default="{ row }">
                     {{ getGroupName(row.groupId) }}
+                  </template>
+                </el-table-column>
+
+                <el-table-column
+                  :label="t('participantsPage.status') || 'Status'"
+                  width="130"
+                >
+                  <template #default="{ row }">
+                    <el-tag
+                      :type="getStatusTagType(row.confirmationStatus)"
+                      size="small"
+                    >
+                      {{ getStatusLabel(row.confirmationStatus) }}
+                    </el-tag>
                   </template>
                 </el-table-column>
 
@@ -747,7 +755,33 @@ const handleLogout = () => {
             :placeholder="
               t('participantsPage.emailPlaceholder') || 'student@university.edu'
             "
-          />
+          >
+            <template #append v-if="studentDialogMode === 'create'">
+              <el-button
+                :icon="Search"
+                @click="lookupStudent"
+                :loading="lookingUp"
+                :disabled="!studentForm.autoFill || !studentForm.email"
+              />
+            </template>
+          </el-input>
+        </el-form-item>
+
+        <!-- Auto-fill checkbox -->
+        <el-form-item v-if="studentDialogMode === 'create'">
+          <el-checkbox v-model="studentForm.autoFill">
+            {{
+              t("participantsPage.autoFillFromDb") || "Auto-fill from database"
+            }}
+          </el-checkbox>
+          <el-tag
+            v-if="studentFound"
+            type="success"
+            size="small"
+            style="margin-left: 8px"
+          >
+            {{ t("participantsPage.studentFound") || "Found" }}
+          </el-tag>
         </el-form-item>
 
         <el-row :gutter="16">
@@ -758,6 +792,7 @@ const handleLogout = () => {
             >
               <el-input
                 v-model="studentForm.firstName"
+                :disabled="studentForm.autoFill && studentFound"
                 :placeholder="
                   t('participantsPage.firstNamePlaceholder') || 'John'
                 "
@@ -771,6 +806,7 @@ const handleLogout = () => {
             >
               <el-input
                 v-model="studentForm.lastName"
+                :disabled="studentForm.autoFill && studentFound"
                 :placeholder="
                   t('participantsPage.lastNamePlaceholder') || 'Doe'
                 "

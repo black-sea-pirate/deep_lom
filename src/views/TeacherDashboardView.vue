@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useProjectStore } from "@/stores/project";
@@ -13,6 +13,12 @@ const projectStore = useProjectStore();
 const { t } = useI18n();
 
 const projects = computed(() => projectStore.projects);
+const loading = computed(() => projectStore.loading);
+
+// Load projects on mount
+onMounted(async () => {
+  await projectStore.fetchProjects();
+});
 
 const getStatusType = (status: string) => {
   const types: Record<string, string> = {
@@ -63,7 +69,7 @@ const handleLogout = () => {
             </el-button>
           </div>
 
-          <div class="projects-grid">
+          <div class="projects-grid" v-loading="loading">
             <el-card
               v-for="project in projects"
               :key="project.id"

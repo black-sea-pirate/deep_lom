@@ -39,9 +39,11 @@ const results = computed(
         <el-card class="score-card">
           <el-result
             icon="success"
-            :title="`Your Score: ${results.score}/${results.maxScore}`"
+            :title="`Your Score: ${results.score ?? 0}/${
+              results.maxScore ?? 100
+            }`"
             :sub-title="`${Math.round(
-              (results.score / results.maxScore) * 100
+              ((results.score ?? 0) / (results.maxScore ?? 100)) * 100
             )}%`"
           >
             <template #extra>
