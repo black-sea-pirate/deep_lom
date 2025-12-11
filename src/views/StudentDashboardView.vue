@@ -55,6 +55,7 @@ const contactRequests = ref<ContactRequest[]>([]);
 const contactRequestsCount = ref(0);
 const showNotificationsDialog = ref(false);
 const processingRequest = ref<string | null>(null);
+const editingRequest = ref<string | null>(null);
 
 // Countdown timer
 const currentTime = ref(Date.now());
@@ -167,6 +168,7 @@ const handleConfirmRequest = async (participantId: string) => {
   try {
     await studentService.confirmContactRequest(participantId);
     ElMessage.success(t("student.requestConfirmed") || "Request confirmed");
+    editingRequest.value = null;
     await loadContactRequests();
   } catch (error: any) {
     const message = error.response?.data?.detail || "Failed to confirm request";
@@ -188,6 +190,7 @@ const handleRejectRequest = async (participantId: string) => {
     processingRequest.value = participantId;
     await studentService.rejectContactRequest(participantId);
     ElMessage.success(t("student.requestRejected") || "Request rejected");
+    editingRequest.value = null;
     await loadContactRequests();
   } catch (error: any) {
     if (error !== "cancel") {
@@ -395,19 +398,6 @@ const getScoreType = (score: number) => {
               <el-icon><Document /></el-icon>
               <span>{{ t("student.myStatistics") }}</span>
             </el-menu-item>
-            <el-menu-item
-              index="notifications"
-              @click="showNotificationsDialog = true"
-            >
-              <el-badge
-                :value="contactRequestsCount"
-                :hidden="contactRequestsCount === 0"
-                :max="99"
-              >
-                <el-icon><Bell /></el-icon>
-                <span>{{ t("student.notifications") || "Notifications" }}</span>
-              </el-badge>
-            </el-menu-item>
           </el-menu>
 
           <!-- Theme Toggle -->
@@ -442,6 +432,17 @@ const getScoreType = (score: number) => {
             </el-button>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item @click="showNotificationsDialog = true">
+                  <el-badge
+                    :value="contactRequestsCount"
+                    :hidden="contactRequestsCount === 0"
+                    :max="99"
+                    class="notification-badge"
+                  >
+                    <el-icon><Bell /></el-icon>
+                  </el-badge>
+                  {{ t("student.notifications") || "Notifications" }}
+                </el-dropdown-item>
                 <el-dropdown-item @click="showAccountDialog = true">
                   <el-icon><User /></el-icon>
                   {{ t("studentAccount.manageEmails") || "Manage Emails" }}
@@ -871,7 +872,7 @@ const getScoreType = (score: number) => {
                     t("student.yourNameInRequest") || "Your name in request"
                   }}:</span
                 >
-                <span class="value">{{ request.studentName }}</span>
+                <span class="value">{{ request.studentName || "-" }}</span>
               </div>
               <div class="detail-row">
                 <span class="label"
@@ -879,38 +880,64 @@ const getScoreType = (score: number) => {
                     t("student.yourEmailInRequest") || "Your email in request"
                   }}:</span
                 >
-                <span class="value">{{ request.studentEmail }}</span>
+                <span class="value">{{ request.studentEmail || "-" }}</span>
               </div>
             </div>
           </div>
           <div class="notification-actions">
-            <el-button
-              type="success"
-              size="small"
-              @click="handleConfirmRequest(request.id)"
-              :loading="processingRequest === request.id"
+            <!-- Show confirm/reject buttons for pending OR when editing -->
+            <template
+              v-if="
+                request.status === 'pending' || editingRequest === request.id
+              "
             >
-              <el-icon><Check /></el-icon>
-              {{ t("common.confirm") || "Confirm" }}
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              @click="handleRejectRequest(request.id)"
-              :loading="processingRequest === request.id"
-            >
-              <el-icon><Close /></el-icon>
-              {{ t("common.reject") || "Reject" }}
-            </el-button>
+              <el-button
+                type="success"
+                size="small"
+                @click="handleConfirmRequest(request.id)"
+                :loading="processingRequest === request.id"
+              >
+                <el-icon><Check /></el-icon>
+                {{ t("common.confirm") || "Confirm" }}
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click="handleRejectRequest(request.id)"
+                :loading="processingRequest === request.id"
+              >
+                <el-icon><Close /></el-icon>
+                {{ t("common.reject") || "Reject" }}
+              </el-button>
+            </template>
+            <!-- Show status text and edit button for confirmed/rejected -->
+            <template v-else>
+              <div class="status-display">
+                <el-tag
+                  :type="request.status === 'confirmed' ? 'success' : 'danger'"
+                  size="large"
+                >
+                  {{
+                    request.status === "confirmed"
+                      ? t("student.youConfirmed") ||
+                        "You confirmed this request"
+                      : t("student.youRejected") || "You rejected this request"
+                  }}
+                </el-tag>
+              </div>
+              <el-button
+                type="info"
+                size="small"
+                plain
+                @click="editingRequest = request.id"
+              >
+                <el-icon><Edit /></el-icon>
+                {{ t("common.edit") || "Edit" }}
+              </el-button>
+            </template>
           </div>
         </div>
       </div>
-
-      <template #footer>
-        <el-button @click="showNotificationsDialog = false">
-          {{ t("common.close") || "Close" }}
-        </el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -1229,7 +1256,16 @@ const getScoreType = (score: number) => {
       flex-direction: column;
       gap: var(--spacing-sm);
       margin-left: var(--spacing-md);
+      align-items: flex-end;
+
+      .status-display {
+        margin-bottom: var(--spacing-xs);
+      }
     }
   }
+}
+
+.notification-badge {
+  margin-right: var(--spacing-sm);
 }
 </style>

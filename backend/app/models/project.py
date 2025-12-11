@@ -59,8 +59,9 @@ class Project(Base):
     openai_assistant_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     
     # Test settings
-    total_time: Mapped[int] = mapped_column(Integer, default=60)  # minutes
-    time_per_question: Mapped[int] = mapped_column(Integer, default=60)  # seconds
+    timer_mode: Mapped[str] = mapped_column(String(20), default="total")  # 'total' or 'per_question'
+    total_time: Mapped[int] = mapped_column(Integer, default=60)  # minutes (used when timer_mode='total')
+    time_per_question: Mapped[int] = mapped_column(Integer, default=60)  # seconds (used when timer_mode='per_question')
     max_students: Mapped[int] = mapped_column(Integer, default=30)
     num_variants: Mapped[int] = mapped_column(Integer, default=1)  # Number of unique test variants
     test_language: Mapped[str] = mapped_column(String(10), default="en")  # Language for generated questions

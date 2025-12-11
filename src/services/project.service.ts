@@ -10,6 +10,19 @@
 import api, { type PaginatedResponse } from "./api";
 import type { Project, ProjectSettings } from "@/types";
 
+export interface ProjectStudent {
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  confirmationStatus?:
+    | "pending"
+    | "confirmed"
+    | "rejected"
+    | "contact_requested"
+    | "unlinked";
+  participantId?: string | null;
+}
+
 /**
  * Create project request payload
  */
@@ -135,6 +148,7 @@ export const projectService = {
   async configureSettings(
     id: string,
     settings: {
+      timerMode?: "total" | "per_question";
       totalTime?: number;
       timePerQuestion?: number;
       maxStudents?: number;
@@ -147,6 +161,7 @@ export const projectService = {
   ): Promise<Project> {
     const response = await api.put<Project>(`/projects/${id}/settings`, {
       settings: {
+        timer_mode: settings.timerMode,
         total_time: settings.totalTime,
         time_per_question: settings.timePerQuestion,
         max_students: settings.maxStudents,
@@ -282,8 +297,10 @@ export const projectService = {
    * @param id - Project ID
    * @returns Array of student emails
    */
-  async getProjectStudents(id: string): Promise<string[]> {
-    const response = await api.get<string[]>(`/projects/${id}/students`);
+  async getProjectStudents(id: string): Promise<ProjectStudent[]> {
+    const response = await api.get<ProjectStudent[]>(
+      `/projects/${id}/students`
+    );
     return response.data;
   },
 
@@ -296,11 +313,11 @@ export const projectService = {
   async addStudentToProject(
     id: string,
     email: string
-  ): Promise<{ message: string; students: string[] }> {
-    const response = await api.post<{ message: string; students: string[] }>(
-      `/projects/${id}/students`,
-      { email }
-    );
+  ): Promise<{ message: string; students: ProjectStudent[] }> {
+    const response = await api.post<{
+      message: string;
+      students: ProjectStudent[];
+    }>(`/projects/${id}/students`, { email });
     return response.data;
   },
 
@@ -313,10 +330,11 @@ export const projectService = {
   async removeStudentFromProject(
     id: string,
     email: string
-  ): Promise<{ message: string; students: string[] }> {
-    const response = await api.delete<{ message: string; students: string[] }>(
-      `/projects/${id}/students/${encodeURIComponent(email)}`
-    );
+  ): Promise<{ message: string; students: ProjectStudent[] }> {
+    const response = await api.delete<{
+      message: string;
+      students: ProjectStudent[];
+    }>(`/projects/${id}/students/${encodeURIComponent(email)}`);
     return response.data;
   },
 };

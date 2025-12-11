@@ -35,8 +35,9 @@ class QuestionTypeConfigResponse(QuestionTypeConfigBase):
 
 class ProjectSettingsBase(BaseModel):
     """Project settings schema - matches frontend ProjectSettings"""
-    total_time: int = Field(default=60, alias="totalTime", ge=1, le=480)  # minutes
-    time_per_question: int = Field(default=60, alias="timePerQuestion", ge=10, le=600)  # seconds
+    timer_mode: str = Field(default="total", alias="timerMode", pattern="^(total|per_question)$")  # 'total' or 'per_question'
+    total_time: int = Field(default=60, alias="totalTime", ge=1, le=480)  # minutes (used when timerMode='total')
+    time_per_question: int = Field(default=60, alias="timePerQuestion", ge=10, le=600)  # seconds (used when timerMode='per_question')
     question_types: List[QuestionTypeConfigBase] = Field(default=[], alias="questionTypes")
     max_students: int = Field(default=30, alias="maxStudents", ge=1, le=500)
     num_variants: int = Field(default=1, alias="numVariants", ge=1, le=30)  # Number of unique test variants
@@ -168,3 +169,21 @@ class ProjectListResponse(BaseModel):
     page: int
     size: int
     pages: int
+
+
+# ============== Project Students ==============
+
+class ProjectStudent(BaseModel):
+    """Allowed student profile for Lobby"""
+
+    email: str
+    first_name: Optional[str] = Field(None, alias="firstName")
+    last_name: Optional[str] = Field(None, alias="lastName")
+    confirmation_status: Optional[str] = Field(
+        None, alias="confirmationStatus", description="pending|confirmed|rejected|contact_requested|unlinked"
+    )
+    participant_id: Optional[UUID] = Field(None, alias="participantId")
+
+    class Config:
+        populate_by_name = True
+        from_attributes = True

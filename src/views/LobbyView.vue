@@ -5,7 +5,10 @@ import { useProjectStore } from "@/stores/project";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Message, Clock, Refresh, User } from "@element-plus/icons-vue";
-import { projectService } from "@/services/project.service";
+import {
+  projectService,
+  type ProjectStudent,
+} from "@/services/project.service";
 import {
   participantService,
   type Participant,
@@ -20,7 +23,7 @@ const projectId = route.params.id as string;
 const project = computed(() => projectStore.getProject(projectId));
 
 // Real students data from backend
-const allowedStudents = ref<string[]>([]);
+const allowedStudents = ref<ProjectStudent[]>([]);
 const loading = ref(false);
 const addingStudent = ref(false);
 
@@ -78,8 +81,9 @@ const loadConfirmedContacts = async () => {
 
 // Available contacts (not already in project)
 const availableContacts = computed(() => {
+  const allowedEmails = allowedStudents.value.map((s) => s.email.toLowerCase());
   return confirmedContacts.value.filter(
-    (contact) => !allowedStudents.value.includes(contact.email.toLowerCase())
+    (contact) => !allowedEmails.includes(contact.email.toLowerCase())
   );
 });
 
@@ -91,7 +95,9 @@ const handleAddStudent = async () => {
     return;
   }
 
-  if (allowedStudents.value.includes(email)) {
+  const allowedEmails = allowedStudents.value.map((s) => s.email.toLowerCase());
+
+  if (allowedEmails.includes(email)) {
     ElMessage.warning("Student already added to this project");
     return;
   }
@@ -135,6 +141,35 @@ const handleRemoveStudent = async (email: string) => {
         error.response?.data?.detail || "Failed to remove student"
       );
     }
+  }
+};
+
+// Status helpers for translation
+const getStatusTagType = (
+  status?: string
+): "success" | "warning" | "danger" | "info" => {
+  switch (status) {
+    case "confirmed":
+      return "success";
+    case "pending":
+      return "warning";
+    case "rejected":
+      return "danger";
+    default:
+      return "info";
+  }
+};
+
+const getStatusLabel = (status?: string): string => {
+  switch (status) {
+    case "confirmed":
+      return t("participantsPage.confirmed") || "Confirmed";
+    case "pending":
+      return t("participantsPage.pending") || "Pending";
+    case "rejected":
+      return t("participantsPage.rejected") || "Rejected";
+    default:
+      return t("participantsPage.notLinked") || "Not linked";
   }
 };
 
@@ -277,14 +312,29 @@ const handleActivateNow = async () => {
               <el-divider />
 
               <el-table
-                :data="
-                  allowedStudents.map((email, index) => ({ id: index, email }))
-                "
+                :data="allowedStudents"
                 style="width: 100%"
                 v-loading="loading"
               >
                 <el-table-column type="index" width="50" label="#" />
-                <el-table-column prop="email" label="Email" />
+                <el-table-column :label="t('common.name')">
+                  <template #default="{ row }">
+                    <span class="student-name">
+                      {{ row.firstName || "" }} {{ row.lastName || "" }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="email" :label="t('common.email')" />
+                <el-table-column :label="t('common.status')" width="140">
+                  <template #default="{ row }">
+                    <el-tag
+                      size="small"
+                      :type="getStatusTagType(row.confirmationStatus)"
+                    >
+                      {{ getStatusLabel(row.confirmationStatus) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column :label="t('common.actions')" width="120">
                   <template #default="{ row }">
                     <el-button

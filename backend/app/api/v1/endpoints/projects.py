@@ -8,7 +8,7 @@ CRUD operations for projects with multi-step creation flow:
 4. Configure settings (question types, time limits)
 """
 
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,9 @@ from app.core.exceptions import (
 )
 from app.models.user import User
 from app.models.project import Project, QuestionTypeConfig
+
+if TYPE_CHECKING:
+    from app.models.participant import Participant
 from app.models.material import Material, project_materials
 from app.schemas.project import (
     ProjectCreate,
@@ -35,6 +38,7 @@ from app.schemas.project import (
     ProjectConfigureSettings,
     VectorizationStatus,
     MaterialInProject,
+    ProjectStudent,
 )
 from app.schemas.common import MessageResponse
 from app.tasks.document_tasks import vectorize_project_materials
@@ -975,7 +979,39 @@ async def delete_question(
 
 # ==================== Project Students Management ====================
 
-@router.get("/{project_id}/students", response_model=List[str])
+def _build_student_profiles(
+    allowed_emails: List[str],
+    participants: List["Participant"],
+) -> List[ProjectStudent]:
+    """Merge allowed emails with participant profiles for Lobby."""
+
+    participant_by_email = {p.email.lower(): p for p in participants}
+    profiles: List[ProjectStudent] = []
+
+    for email in allowed_emails:
+        p = participant_by_email.get(email.lower())
+        if p:
+            profiles.append(
+                {
+                    "email": p.email,
+                    "firstName": p.first_name,
+                    "lastName": p.last_name,
+                    "confirmationStatus": p.confirmation_status,
+                    "participantId": p.id,
+                }
+            )
+        else:
+            profiles.append(
+                {
+                    "email": email,
+                    "confirmationStatus": "unlinked",
+                }
+            )
+
+    return profiles
+
+
+@router.get("/{project_id}/students", response_model=List[ProjectStudent])
 async def get_project_students(
     project_id: UUID,
     current_user: User = Depends(get_current_teacher),
@@ -994,7 +1030,23 @@ async def get_project_students(
     if not project:
         raise NotFoundException(resource="Project", resource_id=str(project_id))
     
-    return project.allowed_students or []
+    allowed_emails = project.allowed_students or []
+
+    if not allowed_emails:
+        return []
+
+    # Import here to avoid circular import
+    from app.models.participant import Participant
+
+    participants_result = await db.execute(
+        select(Participant).where(
+            Participant.teacher_id == current_user.id,
+            Participant.email.in_([e.lower() for e in allowed_emails]),
+        )
+    )
+    participants = participants_result.scalars().all()
+
+    return _build_student_profiles(allowed_emails, participants)
 
 
 @router.post("/{project_id}/students")
@@ -1038,17 +1090,32 @@ async def add_student_to_project(
     # Initialize if None
     if project.allowed_students is None:
         project.allowed_students = []
-    
+
     # Check if already in list
     if email in project.allowed_students:
-        return {"message": "Student already added", "students": project.allowed_students}
-    
-    # Add student
-    project.allowed_students = project.allowed_students + [email]
+        existing_emails = project.allowed_students
+    else:
+        existing_emails = project.allowed_students + [email]
+
+    project.allowed_students = existing_emails
     await db.commit()
     await db.refresh(project)
-    
-    return {"message": "Student added successfully", "students": project.allowed_students}
+
+    # Refresh participant profiles
+    from app.models.participant import Participant
+
+    participants_result = await db.execute(
+        select(Participant).where(
+            Participant.teacher_id == current_user.id,
+            Participant.email.in_([e.lower() for e in project.allowed_students]),
+        )
+    )
+    participants = participants_result.scalars().all()
+
+    return {
+        "message": "Student added successfully",
+        "students": _build_student_profiles(project.allowed_students, participants),
+    }
 
 
 @router.delete("/{project_id}/students/{email}")
@@ -1082,5 +1149,18 @@ async def remove_student_from_project(
     project.allowed_students = [e for e in project.allowed_students if e != email]
     await db.commit()
     await db.refresh(project)
-    
-    return {"message": "Student removed successfully", "students": project.allowed_students}
+
+    from app.models.participant import Participant
+
+    participants_result = await db.execute(
+        select(Participant).where(
+            Participant.teacher_id == current_user.id,
+            Participant.email.in_(project.allowed_students),
+        )
+    )
+    participants = participants_result.scalars().all()
+
+    return {
+        "message": "Student removed successfully",
+        "students": _build_student_profiles(project.allowed_students, participants),
+    }

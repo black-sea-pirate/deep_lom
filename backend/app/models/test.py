@@ -7,7 +7,7 @@ Supports multiple question types.
 
 import uuid
 from datetime import datetime
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from sqlalchemy import String, Integer, DateTime, ForeignKey, Text, Boolean, Float, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -184,6 +184,17 @@ class Answer(Base):
     is_correct: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # AI Grading details (for essay/short-answer)
+    ai_grading_details: Mapped[Optional[Dict[str, Any]]] = mapped_column(
+        JSON, nullable=True
+    )
+    graded_by: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, default="pending"
+    )  # ai, manual, system, pending_manual_review
+    grading_status: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, default="pending"
+    )  # pending, in_progress, completed, failed
     
     # Timestamps
     answered_at: Mapped[datetime] = mapped_column(

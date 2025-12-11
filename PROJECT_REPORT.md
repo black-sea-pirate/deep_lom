@@ -1909,7 +1909,378 @@ docker logs mentis_celery_worker --tail 20
 
 ---
 
-_Последнее обновление: 5 декабря 2025 (Сессия 2)_
+## 📝 Обновление от 08.12.2025 — Claude Opus 4.5
+
+### 🎯 Основные задачи сессии
+
+1. ✅ Исправление отсутствующих переводов на Lobby странице
+2. ✅ Исправление ошибки DateTime timezone (500 при планировании теста)
+3. ✅ Упрощение кнопок на Lobby странице
+4. ✅ Исправление доступа студентов к тестам (контроль по времени)
+5. ✅ Исправление присвоения вариантов (студенты получали все 160 вопросов вместо 8)
+6. ✅ Добавление обратного отсчёта для запланированных тестов
+7. ✅ Исправление подсчёта баллов (показывало 0/160 вместо X/8)
+8. ✅ Исправление ошибки индексации файлов в OpenAI Vector Store
+
+---
+
+### 1. Исправление переводов на Lobby странице
+
+**Проблема**: На странице Lobby отображались ключи вместо переведённого текста (`lobby.selectStudent`, `lobby.noConfirmedContacts` и т.д.)
+
+**Решение**: Добавлены отсутствующие переводы во все 4 locale файла:
+
+```typescript
+// src/i18n/locales/*.ts
+lobby: {
+  selectStudent: "Select Student",
+  noConfirmedContacts: "No confirmed contacts available",
+  addStudentsFirst: "Add students to this project first",
+  selectedStudents: "Selected Students",
+  // ... и другие
+}
+```
+
+**Файлы**: `en.ts`, `ru.ts`, `ua.ts`, `pl.ts`
+
+---
+
+### 2. Исправление ошибки DateTime timezone
+
+**Проблема**: При планировании теста с `start_time` и `end_time` возникала ошибка 500:
+
+```
+can't subtract offset-naive and offset-aware datetimes
+```
+
+**Причина**: Frontend отправлял datetime с timezone (`2025-12-08T10:00:00.000Z`), а в базе данных хранились naive datetime.
+
+**Решение** в `backend/app/api/v1/endpoints/projects.py`:
+
+```python
+@router.patch("/{project_id}/schedule")
+async def schedule_project(...):
+    # Strip timezone info for database storage
+    if data.start_time:
+        start_time = data.start_time.replace(tzinfo=None) if data.start_time.tzinfo else data.start_time
+    if data.end_time:
+        end_time = data.end_time.replace(tzinfo=None) if data.end_time.tzinfo else data.end_time
+```
+
+---
+
+### 3. Упрощение кнопок на Lobby странице
+
+**Было**: 3 кнопки — "Start Test", "Schedule Test", "Activate Test" (путаница в функционале)
+
+**Стало**: 2 кнопки:
+
+- **Schedule Test** — установить время начала/окончания теста
+- **Activate Test** — немедленно активировать тест для выбранных студентов
+
+**Файл**: `src/views/LobbyView.vue`
+
+---
+
+### 4. Исправление контроля доступа студентов к тестам
+
+**Проблема**: Студенты не могли видеть/начать запланированные тесты.
+
+**Решение** в `backend/app/api/v1/endpoints/student.py`:
+
+```python
+# Студент может видеть тест если:
+# 1. Проект активен (status = "active"), ИЛИ
+# 2. Проект готов (status = "ready") И текущее время >= start_time
+
+now = datetime.utcnow()
+for project in projects:
+    is_available = (
+        project.status == "active" or
+        (project.status == "ready" and project.start_time and project.start_time <= now)
+    )
+```
+
+---
+
+### 5. Исправление присвоения вариантов теста
+
+**Проблема**: Студенты получали ВСЕ вопросы (160 штук) вместо вопросов одного варианта (8 штук).
+
+**Причина**: При старте теста не фильтровались вопросы по `variant_number`.
+
+**Решение** в `backend/app/api/v1/endpoints/student.py`:
+
+```python
+@router.post("/tests/{project_id}/start")
+async def start_test_for_student(...):
+    # Получаем доступные варианты
+    variants_result = await db.execute(
+        select(Question.variant_number)
+        .where(Question.project_id == project_id)
+        .distinct()
+    )
+    available_variants = [v for (v,) in variants_result.all()]
+
+    # Присваиваем случайный вариант
+    import random
+    assigned_variant = random.choice(available_variants) if available_variants else 1
+
+    # Создаём тест с присвоенным вариантом
+    test = Test(
+        project_id=project_id,
+        student_id=current_user.id,
+        variant_number=assigned_variant,
+        status="in_progress"
+    )
+
+    # Возвращаем ТОЛЬКО вопросы этого варианта
+    questions = await db.execute(
+        select(Question)
+        .where(Question.project_id == project_id)
+        .where(Question.variant_number == assigned_variant)
+    )
+```
+
+---
+
+### 6. Добавление обратного отсчёта для запланированных тестов
+
+**Функционал**: На StudentDashboardView показывается таймер обратного отсчёта до начала теста.
+
+**Реализация** в `src/views/StudentDashboardView.vue`:
+
+```typescript
+// Вычисление времени до начала теста
+const countdownTimers = computed(() => {
+  const timers: Record<string, string> = {};
+  for (const test of upcomingTests.value) {
+    if (test.status === "scheduled" && test.startTime) {
+      timers[test.id] = formatCountdown(test.startTime);
+    }
+  }
+  return timers;
+});
+
+// Форматирование обратного отсчёта
+const formatCountdown = (startTime: string): string => {
+  const start = new Date(startTime).getTime();
+  const now = currentTime.value;
+  const diff = start - now;
+
+  if (diff <= 0) return t("student.testStarted");
+
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+  return `${hours}h ${minutes}m ${seconds}s`;
+};
+
+// Обновление каждую секунду
+onMounted(() => {
+  countdownInterval = setInterval(() => {
+    currentTime.value = Date.now();
+  }, 1000);
+});
+```
+
+**Новые переводы**:
+
+```typescript
+student: {
+  startsIn: "Starts in",
+  testStarted: "Test started!",
+  // ...
+}
+```
+
+---
+
+### 7. Исправление подсчёта баллов
+
+**Проблема**: После прохождения теста показывало "Score: 0/160" вместо "Score: X/8".
+
+**Причина**: `submit_test` и `get_test_results` не фильтровали вопросы по `variant_number`.
+
+**Решение** в `backend/app/api/v1/endpoints/student.py`:
+
+```python
+@router.post("/tests/{test_id}/submit")
+async def submit_test(...):
+    # Получаем вопросы ТОЛЬКО для варианта студента
+    questions = await db.execute(
+        select(Question)
+        .where(Question.project_id == test.project_id)
+        .where(Question.variant_number == test.variant_number)
+    )
+
+    # Пересчитываем max_score на основе реальных вопросов варианта
+    max_score = sum(q.points for q in questions_list)
+
+    # ... grading logic ...
+
+    test.max_score = max_score  # Теперь 8, а не 160
+
+@router.get("/tests/{test_id}/results")
+async def get_test_results(...):
+    # Аналогично — фильтруем по variant_number
+    questions = await db.execute(
+        select(Question)
+        .where(Question.project_id == test.project_id)
+        .where(Question.variant_number == test.variant_number)
+    )
+```
+
+---
+
+### 8. Исправление ошибки индексации файлов в OpenAI Vector Store
+
+**Проблема**: При создании проекта возникала ошибка 500:
+
+```
+ValueError: Vector Store has no indexed files. Status: {'file_counts': {'failed': 1, 'completed': 0}}
+```
+
+**Причина**: Файлы, загруженные в OpenAI ранее, были удалены через веб-панель https://platform.openai.com/storage/, но их `openai_file_id` остались в базе данных. При попытке добавить эти файлы в новый Vector Store, OpenAI не мог их найти.
+
+**Диагностика** (добавлено логирование):
+
+```python
+# backend/app/services/openai_vectorstore.py
+def add_file_to_vector_store(...):
+    print(f"Adding file {file_id} to vector store {vector_store_id}...")
+    print(f"Initial file status: {vs_file.status}")
+    # ...
+    print(f"Final file status: {vs_file.status}, last_error: {vs_file.last_error}")
+```
+
+**Логи показали**:
+
+```
+Final file status: failed, last_error: LastError(code='invalid_file', message='The file could not be parsed.')
+```
+
+**Решение 1** — Добавлена проверка на failed статус:
+
+```python
+# backend/app/services/openai_vectorstore.py
+def add_file_to_vector_store(...):
+    # ... polling loop ...
+
+    # Check if file indexing failed
+    if vs_file.status in ["failed", "cancelled"]:
+        error_msg = vs_file.last_error if vs_file.last_error else "Unknown error"
+        raise ValueError(f"File indexing {vs_file.status}: {error_msg}")
+```
+
+**Решение 2** — Очистка старых file_id из БД:
+
+```bash
+docker exec mentis_backend python -c "
+from app.db.session import sync_session_maker
+from app.models.material import Material
+from sqlalchemy import update
+
+with sync_session_maker() as db:
+    result = db.execute(update(Material).values(openai_file_id=None))
+    db.commit()
+    print(f'Cleared openai_file_id for {result.rowcount} materials')
+"
+```
+
+**Результат**: Файлы теперь загружаются заново при каждой векторизации, и генерация вопросов работает корректно.
+
+---
+
+### 📁 Изменённые файлы (08.12.2025)
+
+| Файл                                         | Изменения                                             |
+| -------------------------------------------- | ----------------------------------------------------- |
+| `src/i18n/locales/en.ts`                     | +lobby переводы, +countdown переводы                  |
+| `src/i18n/locales/ru.ts`                     | +lobby переводы, +countdown переводы                  |
+| `src/i18n/locales/ua.ts`                     | +lobby переводы, +countdown переводы                  |
+| `src/i18n/locales/pl.ts`                     | +lobby переводы, +countdown переводы                  |
+| `src/views/LobbyView.vue`                    | Упрощение кнопок (2 вместо 3)                         |
+| `src/views/StudentDashboardView.vue`         | +Countdown timer для scheduled тестов                 |
+| `backend/app/api/v1/endpoints/projects.py`   | DateTime timezone fix                                 |
+| `backend/app/api/v1/endpoints/student.py`    | Access control, variant assignment, score calculation |
+| `backend/app/services/openai_vectorstore.py` | +Failed status check, +debug logging                  |
+| `backend/app/tasks/document_tasks.py`        | +Failed materials tracking                            |
+
+---
+
+### 🔧 Важные команды для отладки
+
+```bash
+# Проверить логи Celery worker (генерация тестов, векторизация)
+docker logs mentis_celery_worker --tail 100
+
+# Проверить логи backend
+docker logs mentis_backend --tail 50
+
+# Очистить старые OpenAI file_id (если файлы удалены из OpenAI)
+docker exec mentis_backend python -c "
+from app.db.session import sync_session_maker
+from app.models.material import Material
+from sqlalchemy import update
+
+with sync_session_maker() as db:
+    db.execute(update(Material).values(openai_file_id=None))
+    db.commit()
+"
+
+# Пересобрать и перезапустить контейнеры
+docker-compose up -d --build backend celery_worker
+
+# Проверить статус контейнеров
+docker ps
+```
+
+---
+
+### ⚠️ Известные особенности
+
+1. **OpenAI file_id кэширование**: Если файлы удалены из OpenAI через веб-панель, нужно очистить `openai_file_id` в БД командой выше.
+
+2. **Timezone**: Backend хранит datetime без timezone (naive). Frontend отправляет с timezone — backend автоматически strip'ает.
+
+3. **Варианты тестов**: При старте теста студенту случайно присваивается один из доступных вариантов. Вопросы фильтруются по `variant_number`.
+
+4. **Подсчёт баллов**: `max_score` теперь вычисляется на основе реальных вопросов варианта, а не всех вопросов проекта.
+
+---
+
+## 📌 Обновлённый статус проекта
+
+| Компонент             | Статус      | Примечание                |
+| --------------------- | ----------- | ------------------------- |
+| Frontend (Vue 3)      | ✅ Готов    | Все views реализованы     |
+| Backend (FastAPI)     | ✅ Готов    | Все endpoints реализованы |
+| PostgreSQL            | ✅ Работает | 6 миграций применены      |
+| Redis                 | ✅ Работает | Celery broker active      |
+| OpenAI Vector Stores  | ✅ Работает | +error handling           |
+| Celery Worker         | ✅ Работает | Генерация работает        |
+| Nginx                 | ✅ Работает | Frontend build            |
+| Cloudflare Tunnel     | ✅ Работает | HTTPS                     |
+| **AI Generation**     | ✅ РАБОТАЕТ | Контент из документов     |
+| **Test Variants**     | ✅ РАБОТАЕТ | Случайное присвоение      |
+| **Score Calculation** | ✅ РАБОТАЕТ | По варианту (8 вопросов)  |
+| **Countdown Timer**   | ✅ РАБОТАЕТ | Real-time обновление      |
+
+---
+
+## 🚀 Приоритеты на следующую сессию
+
+1. **WebSocket для Lobby** — real-time обновление статуса студентов
+2. **Статистика по вариантам** — сравнение результатов между вариантами
+3. **Улучшение UI** — показывать номер варианта студенту
+4. **Тестирование edge cases** — множественные одновременные тесты
+5. **Мониторинг** — Prometheus/Grafana для отслеживания
+
+---
+
+_Последнее обновление: 8 декабря 2025_
 _Автор сессии: Claude Opus 4.5 (Preview)_
 _Frontend версия: 0.0.0 (pre-release)_
-_Backend версия: 1.1.0_
+_Backend версия: 1.2.0_

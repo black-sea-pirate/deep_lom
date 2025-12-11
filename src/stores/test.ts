@@ -107,9 +107,17 @@ export const useTestStore = defineStore("test", () => {
       currentTest.value = test;
       currentQuestionIndex.value = 0;
 
-      // Calculate time remaining based on test settings
-      // Default to 60 minutes if not specified
-      timeRemaining.value = test.maxScore ? test.maxScore * 60 : 3600;
+      // Calculate time remaining based on timer mode
+      // timerMode: 'total' - use totalTime (minutes)
+      // timerMode: 'per_question' - use timePerQuestion (seconds) * number of questions
+      if (test.timerMode === "per_question" && test.timePerQuestion) {
+        // Time per question mode: timePerQuestion is in seconds
+        timeRemaining.value = test.timePerQuestion * test.questions.length;
+      } else {
+        // Total time mode (default): totalTime is in minutes
+        const totalMinutes = test.totalTime || 60; // Default 60 minutes
+        timeRemaining.value = totalMinutes * 60; // Convert to seconds
+      }
 
       // Start timer
       startTimer();

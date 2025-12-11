@@ -399,7 +399,7 @@ async def start_test_for_student(
     Assigns a random variant if multiple variants exist.
     """
     from app.models.test import Question
-    import random
+    import hashlib
     
     # Get the project
     project_result = await db.execute(
@@ -495,6 +495,9 @@ async def start_test_for_student(
                 "startedAt": existing.started_at,
                 "maxScore": existing.max_score,
                 "variantNumber": existing.variant_number,
+                "timerMode": project.timer_mode or "total",  # 'total' or 'per_question'
+                "totalTime": project.total_time or 60,  # minutes (used when timerMode='total')
+                "timePerQuestion": project.time_per_question or 60,  # seconds (used when timerMode='per_question')
                 "questions": [
                     {
                         "id": str(q.id),
@@ -502,6 +505,7 @@ async def start_test_for_student(
                         "text": q.text,
                         "points": q.points,
                         "options": q.options,
+                        "pairs": q.matching_pairs,  # For matching questions
                     }
                     for q in questions
                 ],
@@ -522,8 +526,11 @@ async def start_test_for_student(
             detail="This test has no questions yet",
         )
     
-    # Randomly assign a variant to the student
-    assigned_variant = random.choice(available_variants)
+    # Deterministically assign a variant to the student (stable round-robin by email)
+    matched_email = next((email for email in student_emails if email in allowed), student_emails[0])
+    digest = hashlib.md5(matched_email.encode("utf-8")).hexdigest()
+    digest_int = int(digest, 16)
+    assigned_variant = sorted(available_variants)[digest_int % len(available_variants)]
     
     # Get questions for the assigned variant only
     questions_result = await db.execute(
@@ -567,6 +574,9 @@ async def start_test_for_student(
         "startedAt": new_test.started_at,
         "maxScore": max_score,
         "variantNumber": assigned_variant,
+        "timerMode": project.timer_mode or "total",  # 'total' or 'per_question'
+        "totalTime": project.total_time or 60,  # minutes (used when timerMode='total')
+        "timePerQuestion": project.time_per_question or 60,  # seconds (used when timerMode='per_question')
         "questions": [
             {
                 "id": str(q.id),
@@ -574,6 +584,7 @@ async def start_test_for_student(
                 "text": q.text,
                 "points": q.points,
                 "options": q.options,
+                "pairs": q.matching_pairs,  # For matching questions
             }
             for q in questions
         ],
@@ -639,6 +650,7 @@ async def get_student_test(
                 "text": q.text,
                 "points": q.points,
                 "options": q.options,
+                "pairs": q.matching_pairs,  # For matching questions
             }
             for q in questions
         ],
@@ -780,6 +792,7 @@ async def submit_test(
     # Grade answers
     total_score = 0
     correct_count = 0
+    needs_ai_grading = False
     
     print(f"[GRADING] Test {test_id}, Variant {test.variant_number}")
     print(f"[GRADING] Total questions in variant: {len(questions)}")
@@ -856,8 +869,12 @@ async def submit_test(
                 correct_count += 1
         
         else:
-            # For short-answer, essay, matching - manual review needed
+            # For short-answer, essay, matching - mark for AI grading
+            # Score will be 0 initially, AI grading task will update it
             score = 0
+            answer.grading_status = "pending"
+            answer.graded_by = "pending"
+            needs_ai_grading = True
         
         print(f"[GRADING] Result: is_correct={is_correct}, score={score}")
         
@@ -878,6 +895,21 @@ async def submit_test(
     
     await db.commit()
     
+    # Trigger async AI grading for written answers
+    # Import here to avoid circular imports
+    from app.tasks.grading_tasks import grade_test_written_answers
+    
+    # Check if there are any written answers that need AI grading
+    has_written_questions = any(
+        q.question_type in ["essay", "short-answer", "matching"]
+        for q in questions.values()
+    )
+    
+    if has_written_questions:
+        # Queue the AI grading task
+        grade_test_written_answers.delay(str(test_id))
+        print(f"[GRADING] Queued AI grading task for test {test_id}")
+    
     return {
         "testId": str(test.id),
         "score": total_score,
@@ -885,6 +917,7 @@ async def submit_test(
         "correctAnswers": correct_count,
         "totalQuestions": len(questions),
         "passed": total_score >= (correct_max_score * 0.6) if correct_max_score > 0 else False,
+        "aiGradingPending": has_written_questions,
     }
 
 
@@ -937,6 +970,48 @@ async def get_test_results(
     )
     answers = {str(a.question_id): a for a in answers_result.scalars().all()}
     
+    # Check if any answers are still pending AI grading
+    ai_grading_pending = any(
+        a.grading_status == "pending" or a.grading_status == "in_progress"
+        for a in answers.values()
+    )
+    
+    # Build question results with AI grading details
+    question_results = []
+    for q in questions:
+        answer = answers.get(str(q.id))
+        
+        question_data = {
+            "id": str(q.id),
+            "type": q.question_type,
+            "text": q.text,
+            "points": q.points,
+            "options": q.options,
+            "pairs": q.matching_pairs,  # For matching questions
+            "correctAnswer": q.correct_answer,  # Show correct answer in results
+            "studentAnswer": answer.answer if answer else None,
+            "isCorrect": answer.is_correct if answer else False,
+            "score": answer.score if answer else 0,
+        }
+        
+        # Add AI grading details for written questions
+        if q.question_type in ["essay", "short-answer", "matching"] and answer:
+            question_data["feedback"] = answer.feedback
+            question_data["gradedBy"] = answer.graded_by
+            question_data["gradingStatus"] = answer.grading_status
+            
+            # Include detailed AI grading info if available
+            if answer.ai_grading_details:
+                question_data["aiGrading"] = {
+                    "criteria": answer.ai_grading_details.get("criteria", []),
+                    "keyStrengths": answer.ai_grading_details.get("keyStrengths", []),
+                    "areasForImprovement": answer.ai_grading_details.get("areasForImprovement", []),
+                    "detectedKeywords": answer.ai_grading_details.get("detectedKeywords", []),
+                    "percentage": answer.ai_grading_details.get("percentage", 0),
+                }
+        
+        question_results.append(question_data)
+    
     return {
         "id": str(test.id),
         "projectId": str(test.project_id),
@@ -947,20 +1022,8 @@ async def get_test_results(
         "score": test.score,
         "maxScore": test.max_score,
         "passed": test.score >= (test.max_score * 0.6) if test.max_score > 0 else False,
-        "questions": [
-            {
-                "id": str(q.id),
-                "type": q.question_type,
-                "text": q.text,
-                "points": q.points,
-                "options": q.options,
-                "correctAnswer": q.correct_answer,  # Show correct answer in results
-                "studentAnswer": answers.get(str(q.id)).answer if str(q.id) in answers else None,
-                "isCorrect": answers.get(str(q.id)).is_correct if str(q.id) in answers else False,
-                "score": answers.get(str(q.id)).score if str(q.id) in answers else 0,
-            }
-            for q in questions
-        ],
+        "aiGradingPending": ai_grading_pending,
+        "questions": question_results,
     }
 
 
@@ -1005,6 +1068,8 @@ async def get_contact_requests(
             "teacherId": str(teacher.id),
             "teacherName": f"{teacher.first_name} {teacher.last_name}",
             "teacherEmail": teacher.email,
+            "studentName": f"{participant.first_name} {participant.last_name}",
+            "studentEmail": participant.email,
             "status": participant.confirmation_status,
             "createdAt": participant.created_at,
         })

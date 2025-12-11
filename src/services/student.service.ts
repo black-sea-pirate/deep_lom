@@ -209,6 +209,7 @@ export interface ContactRequest {
   teacherEmail: string;
   studentName: string;
   studentEmail: string;
+  status: "pending" | "confirmed" | "rejected";
   createdAt: Date;
 }
 

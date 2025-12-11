@@ -62,6 +62,7 @@ const projectData = ref({
   title: "",
   groupName: "",
   description: "",
+  timerMode: "total" as "total" | "per_question", // Timer mode selector
   totalTime: 60,
   timePerQuestion: 120,
   maxStudents: 30,
@@ -227,6 +228,7 @@ const handleGenerate = async () => {
       groupName: projectData.value.groupName,
       description: projectData.value.description,
       settings: {
+        timerMode: projectData.value.timerMode,
         totalTime: projectData.value.totalTime,
         timePerQuestion: projectData.value.timePerQuestion,
         maxStudents: projectData.value.maxStudents,
@@ -247,6 +249,7 @@ const handleGenerate = async () => {
     progressPercent.value = 15;
     progressDetails.value = "";
     await projectService.configureSettings(project.id, {
+      timerMode: projectData.value.timerMode,
       totalTime: projectData.value.totalTime,
       timePerQuestion: projectData.value.timePerQuestion,
       maxStudents: projectData.value.maxStudents,
@@ -514,23 +517,65 @@ onMounted(() => {
         <div v-show="currentStep === 2" class="step">
           <h3>{{ t("wizard.configureSettings") }}</h3>
           <el-form :model="projectData" label-position="top">
+            <!-- Timer Mode Selection -->
+            <el-form-item :label="t('teacher.timerMode') || 'Timer Mode'">
+              <el-radio-group
+                v-model="projectData.timerMode"
+                class="timer-mode-selector"
+              >
+                <el-radio-button value="total">
+                  {{ t("teacher.totalTimeMode") || "Total Time" }}
+                </el-radio-button>
+                <el-radio-button value="per_question">
+                  {{ t("teacher.perQuestionMode") || "Time Per Question" }}
+                </el-radio-button>
+              </el-radio-group>
+              <div class="timer-mode-hint">
+                {{
+                  projectData.timerMode === "total"
+                    ? t("teacher.totalTimeModeHint") ||
+                      "Set a single time limit for the entire test"
+                    : t("teacher.perQuestionModeHint") ||
+                      "Set time limit for each question individually"
+                }}
+              </div>
+            </el-form-item>
+
             <el-row :gutter="20">
               <el-col :span="12">
-                <el-form-item :label="t('teacher.totalTime')">
+                <el-form-item
+                  :label="t('teacher.totalTime')"
+                  :class="{
+                    'timer-disabled': projectData.timerMode !== 'total',
+                  }"
+                >
                   <el-input-number
                     v-model="projectData.totalTime"
                     :min="10"
                     :max="300"
+                    :disabled="projectData.timerMode !== 'total'"
                   />
+                  <span class="time-unit">{{
+                    t("teacher.minutes") || "min"
+                  }}</span>
                 </el-form-item>
               </el-col>
               <el-col :span="12">
-                <el-form-item :label="t('teacher.timePerQuestion')">
+                <el-form-item
+                  :label="t('teacher.timePerQuestion')"
+                  :class="{
+                    'timer-disabled': projectData.timerMode !== 'per_question',
+                  }"
+                >
                   <el-input-number
                     v-model="projectData.timePerQuestion"
                     :min="30"
                     :max="600"
+                    :disabled="projectData.timerMode !== 'per_question'"
                   />
+                  <span class="time-unit">{{
+                    t("teacher.seconds") || "sec"
+                  }}</span>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -965,6 +1010,32 @@ onMounted(() => {
   font-size: 0.85rem;
   color: var(--color-text-light);
   margin-top: var(--spacing-xs);
+}
+
+/* Timer Mode Styles */
+.timer-mode-selector {
+  margin-bottom: var(--spacing-sm);
+}
+
+.timer-mode-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-light);
+  margin-top: var(--spacing-xs);
+  font-style: italic;
+}
+
+.timer-disabled {
+  opacity: 0.5;
+
+  .el-input-number {
+    background-color: var(--el-fill-color-light);
+  }
+}
+
+.time-unit {
+  margin-left: var(--spacing-xs);
+  color: var(--color-text-light);
+  font-size: 0.9rem;
 }
 
 @media (max-width: 768px) {

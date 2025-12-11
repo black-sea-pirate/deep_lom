@@ -36,8 +36,9 @@ export interface Project {
 }
 
 export interface ProjectSettings {
-  totalTime: number; // minutes
-  timePerQuestion: number; // seconds
+  timerMode: "total" | "per_question"; // 'total' uses totalTime, 'per_question' uses timePerQuestion
+  totalTime: number; // minutes (used when timerMode='total')
+  timePerQuestion: number; // seconds (used when timerMode='per_question')
   questionTypes: QuestionTypeConfig[];
   maxStudents: number;
   numVariants?: number; // Number of unique test variants (1-30)
@@ -122,6 +123,10 @@ export interface Test {
   status: "pending" | "in-progress" | "completed" | "graded";
   startedAt?: Date;
   completedAt?: Date;
+  // Timer settings from project
+  timerMode?: "total" | "per_question"; // 'total' or 'per_question'
+  totalTime?: number; // minutes (used when timerMode='total')
+  timePerQuestion?: number; // seconds (used when timerMode='per_question')
 }
 
 export interface Answer {

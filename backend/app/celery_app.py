@@ -15,7 +15,11 @@ celery_app = Celery(
     "ai_test_platform",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
-    include=["app.tasks.document_tasks", "app.tasks.test_tasks"],
+    include=[
+        "app.tasks.document_tasks",
+        "app.tasks.test_tasks",
+        "app.tasks.grading_tasks",
+    ],
 )
 
 # Celery configuration
@@ -42,4 +46,7 @@ celery_app.conf.task_routes = {
     # Test tasks
     "generate_test_questions": {"queue": "tests"},
     "check_generation_status": {"queue": "tests"},
+    # Grading tasks
+    "grade_written_answer": {"queue": "tests"},
+    "grade_test_written_answers": {"queue": "tests"},
 }
