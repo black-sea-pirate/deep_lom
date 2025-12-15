@@ -62,11 +62,6 @@ class Settings(BaseSettings):
             return f"redis://:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/0"
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
     
-    # ChromaDB (Vector Database for RAG)
-    CHROMA_HOST: str = "localhost"
-    CHROMA_PORT: int = 8000
-    CHROMA_COLLECTION_NAME: str = "materials"
-    
     # OpenAI
     OPENAI_API_KEY: str = ""  # Set via environment variable
     OPENAI_MODEL: str = "gpt-4.1"

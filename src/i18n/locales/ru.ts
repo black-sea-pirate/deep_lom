@@ -9,6 +9,9 @@ export default {
     password: "Пароль",
     firstName: "Имя",
     lastName: "Фамилия",
+    name: "Имя",
+    status: "Статус",
+    actions: "Действия",
     save: "Сохранить",
     cancel: "Отмена",
     delete: "Удалить",
@@ -99,6 +102,8 @@ export default {
     matching: "Сопоставление",
     questionCount: "Количество Вопросов",
     waitingStudents: "Ожидающие Студенты",
+    onlineNow: "Онлайн Сейчас",
+    waitingForStudents: "Пока нет студентов онлайн. Ожидаем подключения...",
     readyToStart: "Готово к Началу",
     addStudent: "Добавить Студента",
     removeStudent: "Удалить Студента",
@@ -129,6 +134,37 @@ export default {
     lobbyHub: "Проведение / Лобби",
     analyticsReports: "Аналитика и отчёты",
     settings: "Настройки",
+  },
+
+  // Lobby view translations
+  lobby: {
+    testResults: "Результаты тестирования",
+    completed: "завершено",
+    inProgress: "в процессе",
+    testStatus: "Статус теста",
+    score: "Баллы",
+    timeTaken: "Время",
+    grading: "Проверка",
+    viewAnswers: "Просмотреть ответы",
+    resetAccess: "Сбросить доступ (разрешить повторную попытку)",
+    deleteResults: "Удалить результаты",
+    notStartedYet: "Ещё не начал",
+    noResultsYet: "Результатов пока нет",
+    statusPending: "Ожидание",
+    statusInProgress: "В процессе",
+    statusCompleted: "Завершено",
+    statusGraded: "Проверено",
+    statusNotStarted: "Не начато",
+    confirmDeleteResults:
+      "Вы уверены, что хотите удалить все результаты тестирования для",
+    confirmDeleteWarning:
+      "Это действие нельзя отменить. Все данные теста будут удалены безвозвратно.",
+    confirmResetAccess: "Вы уверены, что хотите сбросить доступ к тесту для",
+    confirmResetWarning:
+      "Это удалит любую незавершённую попытку теста, позволяя студенту начать заново.",
+    deleteSuccess: "Результаты теста успешно удалены",
+    resetSuccess: "Доступ к тесту успешно сброшен",
+    studentAnswers: "Ответы студента",
   },
 
   // Teacher Settings

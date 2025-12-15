@@ -413,13 +413,24 @@ async def submit_test(
             score = question.points * matched / len(correct_pairs) if correct_pairs else 0
             
         elif question.question_type == "essay":
-            # Essays need manual grading
+            # Essays need AI or manual grading
             score = 0
-            feedback = "Awaiting manual grading"
+            feedback = "Awaiting AI grading"
+            grading_status = "pending"
+            graded_by = "pending"
         
         if is_correct:
             correct_count += 1
         total_score += score
+        
+        # Determine grading status for this answer
+        if question.question_type == "essay":
+            answer_grading_status = "pending"
+            answer_graded_by = "pending"
+        else:
+            # Objective questions are auto-graded
+            answer_grading_status = "completed"
+            answer_graded_by = "system"
         
         # Save answer
         answer = Answer(
@@ -429,6 +440,8 @@ async def submit_test(
             is_correct=is_correct,
             score=score,
             feedback=feedback,
+            grading_status=answer_grading_status,
+            graded_by=answer_graded_by,
         )
         db.add(answer)
     
@@ -507,3 +520,93 @@ async def get_test_results(
             for a in test.answers
         ],
     )
+
+
+@router.get("/{test_id}/details")
+async def get_test_details_for_teacher(
+    test_id: UUID,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get detailed test information for teacher review.
+    Includes all answers with questions and grading details.
+    """
+    # Get test with student
+    result = await db.execute(
+        select(Test)
+        .where(Test.id == test_id)
+        .options(selectinload(Test.answers), selectinload(Test.student))
+    )
+    test = result.scalar_one_or_none()
+    
+    if not test:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test not found",
+        )
+    
+    # Verify teacher owns this project
+    project_result = await db.execute(
+        select(Project).where(
+            Project.id == test.project_id,
+            Project.teacher_id == current_user.id,
+        )
+    )
+    project = project_result.scalar_one_or_none()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+    
+    # Get questions for this test variant
+    questions_result = await db.execute(
+        select(Question).where(
+            Question.project_id == test.project_id,
+            Question.variant_number == test.variant_number,
+        )
+    )
+    questions = {str(q.id): q for q in questions_result.scalars().all()}
+    
+    # Build detailed answers
+    answers_detail = []
+    for answer in test.answers:
+        question = questions.get(str(answer.question_id))
+        if not question:
+            continue
+        
+        answers_detail.append({
+            "questionId": str(answer.question_id),
+            "questionText": question.text,
+            "questionType": question.question_type,
+            "options": question.options or [],
+            "correctAnswer": question.correct_answer,
+            "studentAnswer": answer.answer,
+            "isCorrect": answer.is_correct,
+            "score": answer.score,
+            "maxScore": question.points,
+            "feedback": answer.feedback,
+            "gradingStatus": answer.grading_status,
+            "gradedBy": answer.graded_by,
+        })
+    
+    # Sort by question order if available
+    # answers_detail.sort(key=lambda x: questions.get(x["questionId"], Question()).order)
+    
+    return {
+        "testId": str(test.id),
+        "projectId": str(test.project_id),
+        "projectTitle": project.title,
+        "studentId": str(test.student_id) if test.student_id else None,
+        "studentEmail": test.student.email if test.student else None,
+        "studentName": f"{test.student.first_name or ''} {test.student.last_name or ''}".strip() if test.student else None,
+        "status": test.status,
+        "score": test.score,
+        "maxScore": test.max_score,
+        "variantNumber": test.variant_number,
+        "startedAt": test.started_at.isoformat() if test.started_at else None,
+        "completedAt": test.completed_at.isoformat() if test.completed_at else None,
+        "answers": answers_detail,
+    }

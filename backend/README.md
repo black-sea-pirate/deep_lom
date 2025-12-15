@@ -37,9 +37,10 @@ backend/
 │   │   ├── test.py
 │   │   └── student.py
 │   ├── services/        # Бизнес-логика
-│   │   ├── rag.py           # RAG с ChromaDB
+│   │   ├── openai_vectorstore.py  # OpenAI Vector Stores для RAG
 │   │   ├── document_processor.py  # Обработка документов
-│   │   └── ai_generator.py  # Генерация тестов GPT-4.1
+│   │   ├── ai_generator.py        # Генерация тестов GPT-4.1
+│   │   └── ai_grading.py          # AI оценка эссе
 │   ├── tasks/           # Celery задачи
 │   │   ├── document_tasks.py
 │   │   └── test_tasks.py
@@ -56,7 +57,7 @@ backend/
 
 ```bash
 # Из корня проекта
-docker-compose up -d postgres redis chromadb
+docker-compose up -d postgres redis
 ```
 
 ### 2. Установка зависимостей
@@ -124,18 +125,17 @@ celery -A app.celery_app worker --loglevel=info --queues=documents,tests
 - `GET /api/v1/tests/project/{id}` - Тесты проекта
 - `POST /api/v1/tests/{id}/submit` - Отправить ответы
 
-## RAG Pipeline
+## RAG Pipeline (OpenAI Vector Stores)
 
 1. **Загрузка документа** → `POST /materials/upload`
 2. **Векторизация** → Celery task `process_document`
-   - Извлечение текста (PDF, DOCX, TXT, OCR)
-   - Разбиение на чанки
-   - Создание embeddings (OpenAI)
-   - Сохранение в ChromaDB
-3. **Генерация теста** → `POST /tests/generate`
-   - Поиск релевантных чанков
-   - GPT-4.1 генерирует вопросы на основе контекста
-   - Минимизация галлюцинаций
+   - Загрузка файла в OpenAI Files API
+   - Создание/обновление Vector Store для проекта
+   - Индексация документа в Vector Store
+3. **Генерация теста** → `POST /projects/{id}/generate-tests`
+   - Извлечение контента через File Search (Assistants API)
+   - GPT-4.1 генерирует вопросы на основе реального контента
+   - Поддержка N уникальных вариантов теста
 
 ## Deployment (Debian)
 

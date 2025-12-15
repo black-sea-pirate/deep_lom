@@ -7,8 +7,8 @@
 ### Основная идея
 
 1. Преподаватель загружает учебные материалы (PDF, DOCX, TXT, изображения)
-2. Система обрабатывает документы, создает embeddings и сохраняет в векторную БД (ChromaDB)
-3. AI анализирует материалы через RAG и генерирует вопросы разных типов
+2. Система загружает документы в OpenAI Vector Store для RAG
+3. AI анализирует материалы через File Search и генерирует вопросы разных типов
 4. Студенты проходят тесты, система автоматически проверяет ответы
 5. Преподаватель получает детальную аналитику по результатам
 
@@ -42,7 +42,7 @@
 - **Pydantic v2** — валидация данных
 - **PostgreSQL 16** — основная БД
 - **Redis 7** — кэширование и Celery broker
-- **ChromaDB** — векторная БД для RAG
+- **OpenAI Vector Stores** — векторизация документов для RAG
 - **OpenAI API (GPT-4.1)** — генерация тестов
 - **text-embedding-3-small** — embeddings для RAG
 - **Celery** — фоновые задачи (обработка документов, генерация тестов)
@@ -50,9 +50,10 @@
 
 ### Infrastructure (Реализовано ✅)
 
-- **Docker Compose** — оркестрация 7 сервисов
+- **Docker Compose** — оркестрация 10 сервисов
 - **Nginx** — reverse proxy
 - **Cloudflare Tunnel** — HTTPS доступ без открытия портов
+- **Prometheus + Grafana** — мониторинг
 - **Docker Volumes** — персистентность данных
 
 ---
@@ -150,9 +151,10 @@ backend/
 │   │   ├── test.py                  # TestGenerate, QuestionResponse
 │   │   └── token.py                 # Token, TokenData
 │   ├── services/                    # Бизнес-логика
-│   │   ├── rag.py                   # RAG сервис (ChromaDB + embeddings)
+│   │   ├── openai_vectorstore.py    # OpenAI Vector Stores для RAG
 │   │   ├── document_processor.py    # Парсинг PDF, DOCX, изображений
-│   │   └── ai_generator.py          # Генерация вопросов через GPT-4.1
+│   │   ├── ai_generator.py          # Генерация вопросов через GPT-4.1
+│   │   └── ai_grading.py            # AI оценка эссе
 │   ├── tasks/                       # Celery задачи
 │   │   ├── document_tasks.py        # process_document, delete_document_vectors
 │   │   └── test_tasks.py            # generate_test_questions
@@ -165,23 +167,27 @@ backend/
 
 ---
 
-## 🐳 Docker Compose - 7 сервисов
+## 🐳 Docker Compose - 10 сервисов
 
 ```yaml
 services:
   postgres: # PostgreSQL 16 Alpine - основная БД
   redis: # Redis 7 Alpine - кэш + Celery broker
-  chromadb: # ChromaDB - векторная БД для RAG
   backend: # FastAPI application (Uvicorn)
   celery_worker: # Celery worker (2 воркера, очереди: documents, tests)
   nginx: # Nginx + Vue.js frontend (production build)
   cloudflared: # Cloudflare Tunnel для HTTPS
+  prometheus: # Сбор метрик
+  grafana: # Визуализация метрик
+  redis-exporter: # Redis метрики для Prometheus
+  postgres-exporter: # PostgreSQL метрики для Prometheus
 
 volumes:
   postgres_data: # Данные PostgreSQL
   redis_data: # Данные Redis
-  chroma_data: # Данные ChromaDB
   uploads_data: # Загруженные файлы
+  prometheus_data: # Данные Prometheus
+  grafana_data: # Данные Grafana
 
 networks:
   mentis_network: # Внутренняя сеть Docker
@@ -384,10 +390,9 @@ GET  /api/v1/tests/:id/status         — статус генерации
 
 ### 6. AI интеграция (GPT-4.1) ✅
 
-- ✅ Парсинг загруженных материалов (PDF, DOCX, TXT, images с OCR)
-- ✅ Создание embeddings через OpenAI text-embedding-3-small
-- ✅ Сохранение векторов в ChromaDB
-- ✅ RAG поиск релевантного контекста
+- ✅ Загрузка материалов в OpenAI Files API
+- ✅ Создание Vector Store для каждого проекта
+- ✅ File Search для извлечения контента (RAG)
 - ✅ Генерация вопросов разных типов через GPT-4.1
 - ✅ Сохранение сгенерированных вопросов в PostgreSQL
 
@@ -552,15 +557,14 @@ run_steps = [{'type': 'message_creation'}]  # Нет file_search!
 async def process_document(material_id: str):
     """
     1. Получает материал из БД
-    2. Парсит документ (PDF/DOCX/TXT/Image)
-    3. Создает embeddings через OpenAI
-    4. Сохраняет в ChromaDB
-    5. Обновляет статус материала
+    2. Загружает файл в OpenAI Files API
+    3. Добавляет в Vector Store проекта
+    4. Обновляет статус материала
     """
 
 @celery.task(name="delete_document_vectors", queue="documents")
 async def delete_document_vectors(material_id: str):
-    """Удаляет векторы документа из ChromaDB"""
+    """Удаляет файл из OpenAI и Vector Store"""
 ```
 
 ### test_tasks.py
@@ -569,11 +573,10 @@ async def delete_document_vectors(material_id: str):
 @celery.task(name="generate_test_questions", queue="tests")
 async def generate_test_questions(project_id: str, settings: dict):
     """
-    1. Получает релевантный контекст из ChromaDB (RAG)
+    1. Извлекает контент через File Search (OpenAI Vector Store)
     2. Формирует промпт для GPT-4.1
-    3. Генерирует вопросы разных типов
+    3. Генерирует N вариантов теста
     4. Сохраняет вопросы в PostgreSQL
-    5. Уведомляет о завершении
     """
 
 @celery.task(name="check_generation_status", queue="tests")
@@ -622,8 +625,8 @@ async def check_generation_status(task_id: str):
 - [x] JWT аутентификация (access + refresh tokens)
 - [x] CRUD операции для всех сущностей
 - [x] Загрузка файлов (multipart/form-data)
-- [x] ChromaDB интеграция для RAG
-- [x] OpenAI API интеграция (GPT-4.1, embeddings)
+- [x] OpenAI Vector Stores для RAG
+- [x] OpenAI API интеграция (GPT-4.1, File Search)
 - [x] Celery workers для фоновых задач
 - [x] Redis для кэширования и Celery broker
 - [x] Health check endpoint
@@ -633,12 +636,13 @@ async def check_generation_status(task_id: str):
 
 ## ✅ Чеклист готовности Infrastructure
 
-- [x] Docker Compose с 7 сервисами
+- [x] Docker Compose с 10 сервисами
 - [x] PostgreSQL 16 с persistent volume
 - [x] Redis 7 с persistent volume
-- [x] ChromaDB с persistent volume
+- [x] OpenAI Vector Stores для RAG
 - [x] Nginx reverse proxy
 - [x] Cloudflare Tunnel для HTTPS
+- [x] Prometheus + Grafana мониторинг
 - [x] Health checks для всех сервисов
 - [x] Все контейнеры запускаются и работают
 
@@ -686,7 +690,7 @@ VITE_APP_TITLE=AI Test Platform
 1. `src/types/index.ts` — все TypeScript интерфейсы
 2. `src/services/api.ts` — конфигурация Axios
 3. `src/router/index.ts` — все маршруты
-4. `src/stores/` — Pinia stores с mock данными
+4. `src/stores/` — Pinia stores (auth, project, test, theme)
 5. `src/i18n/locales/en.ts` — все ключи переводов
 
 ### Backend
@@ -952,7 +956,7 @@ interface Project {
 
 - Добавлены методы `startVectorization()` и `getVectorizationStatus()` в `project.service.ts`
 - Обновлён `handleGenerate()` для включения шага векторизации
-- Исправлен `ai_generator.py` — теперь передаётся `project_id` для поиска в правильной коллекции ChromaDB
+- Исправлен `ai_generator.py` — теперь передаётся `project_id` для поиска в правильном Vector Store
 
 ---
 
@@ -1020,17 +1024,17 @@ Test generation timed out
 
 ## 📌 Статус проекта
 
-| Компонент         | Статус      | Примечание                 |
-| ----------------- | ----------- | -------------------------- |
-| Frontend (Vue 3)  | ✅ Готов    | Все views реализованы      |
-| Backend (FastAPI) | ✅ Готов    | Все endpoints реализованы  |
-| PostgreSQL        | ✅ Работает | Контейнер healthy          |
-| Redis             | ✅ Работает | Celery broker active       |
-| ChromaDB          | ✅ Работает | Vector DB ready            |
-| Celery Worker     | ✅ Работает | Tasks registered           |
-| Nginx             | ✅ Работает | Reverse proxy active       |
-| Cloudflare Tunnel | ✅ Работает | HTTPS на mentis.forzone.uk |
-| **AI Generation** | ⚠️ Timeout  | Требует отладки Celery     |
+| Компонент            | Статус      | Примечание                 |
+| -------------------- | ----------- | -------------------------- |
+| Frontend (Vue 3)     | ✅ Готов    | Все views реализованы      |
+| Backend (FastAPI)    | ✅ Готов    | Все endpoints реализованы  |
+| PostgreSQL           | ✅ Работает | Контейнер healthy          |
+| Redis                | ✅ Работает | Celery broker active       |
+| OpenAI Vector Stores | ✅ Работает | RAG через File Search      |
+| Celery Worker        | ✅ Работает | Tasks registered           |
+| Nginx                | ✅ Работает | Reverse proxy active       |
+| Cloudflare Tunnel    | ✅ Работает | HTTPS на mentis.forzone.uk |
+| **AI Generation**    | ✅ Работает | Двухшаговый RAG            |
 
 **Следующие шаги:**
 
@@ -1357,18 +1361,19 @@ docker logs mentis_backend --tail 50
 
 ## 📌 Обновлённый статус проекта
 
-| Компонент                | Статус             | Примечание                      |
-| ------------------------ | ------------------ | ------------------------------- |
-| Frontend (Vue 3)         | ✅ Готов           | Все views реализованы           |
-| Backend (FastAPI)        | ✅ Готов           | Все endpoints реализованы       |
-| PostgreSQL               | ✅ Работает        | Контейнер healthy               |
-| Redis                    | ✅ Работает        | Celery broker active            |
-| ChromaDB                 | ❌ Не используется | Заменён на OpenAI Vector Stores |
-| **OpenAI Vector Stores** | ✅ Работает        | Новый подход к RAG              |
-| Celery Worker            | ✅ Работает        | Tasks registered                |
-| Nginx                    | ✅ Работает        | Reverse proxy active            |
-| Cloudflare Tunnel        | ✅ Работает        | HTTPS на mentis.forzone.uk      |
-| **AI Generation**        | ✅ РАБОТАЕТ!       | Двухшаговый подход              |
+| Компонент         | Статус      | Примечание                |
+| ----------------- | ----------- | ------------------------- |
+| Frontend (Vue 3)  | ✅ Готов    | Все views реализованы     |
+| Backend (FastAPI) | ✅ Готов    | Все endpoints реализованы |
+| PostgreSQL        | ✅ Работает | Контейнер healthy         |
+| Redis             | ✅ Работает | Celery broker active      |
+
+\
+| **OpenAI Vector Stores** | ✅ Работает | Новый подход к RAG |
+| Celery Worker | ✅ Работает | Tasks registered |
+| Nginx | ✅ Работает | Reverse proxy active |
+| Cloudflare Tunnel | ✅ Работает | HTTPS на mentis.forzone.uk |
+| **AI Generation** | ✅ РАБОТАЕТ! | Двухшаговый подход |
 
 ---
 
@@ -2251,13 +2256,98 @@ docker ps
 
 ---
 
+## 🔄 Сессия 11 декабря 2025 — Timer Mode + AI Grading
+
+### ⏱️ Timer Mode — Переключатель режима таймера
+
+**Проблема**: Конфликт между полями `Total Time` и `Time Per Question` при создании проекта. Оба поля сохранялись, но не было ясно какое использовать.
+
+**Решение**: Добавлен переключатель `timerMode` для выбора одного из двух режимов:
+
+- `total` — общий лимит времени на весь тест (минуты)
+- `per_question` — лимит на каждый вопрос отдельно (секунды)
+
+**Изменённые файлы**:
+
+| Файл                                         | Изменение                                                               |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `backend/alembic/versions/008_timer_mode.py` | Миграция: добавлено поле `timer_mode` в таблицу `projects`              |
+| `backend/app/models/project.py`              | +`timer_mode: Mapped[str]` (default='total')                            |
+| `backend/app/schemas/project.py`             | +`timer_mode` в `ProjectSettingsBase`                                   |
+| `backend/app/api/v1/endpoints/student.py`    | Возвращает `timerMode`, `totalTime`, `timePerQuestion` при старте теста |
+| `src/types/index.ts`                         | +`timerMode` в `ProjectSettings` и `Test` интерфейсы                    |
+| `src/stores/test.ts`                         | **Исправлен баг**: таймер считался по `maxScore`, теперь по `timerMode` |
+| `src/views/ProjectCreateView.vue`            | UI: radio-buttons для выбора режима, disabled для неактивного поля      |
+| `src/services/project.service.ts`            | +`timerMode` в `configureSettings()`                                    |
+| `src/i18n/locales/*.ts`                      | Переводы: timerMode, totalTimeMode, perQuestionMode, hints              |
+
+**Баг-фикс таймера**:
+
+```typescript
+// Было (НЕПРАВИЛЬНО):
+timeRemaining.value = test.maxScore ? test.maxScore * 60 : 3600;
+
+// Стало (ПРАВИЛЬНО):
+if (test.timerMode === "per_question" && test.timePerQuestion) {
+  timeRemaining.value = test.timePerQuestion * test.questions.length;
+} else {
+  timeRemaining.value = (test.totalTime || 60) * 60;
+}
+```
+
+---
+
+### 🤖 AI Grading — Автоматическая проверка эссе (подготовлено)
+
+**Цель**: AI-оценка для `essay` и `short-answer` вопросов с использованием RAG-контекста из Vector Store.
+
+**Создано** (но может потребовать доработки):
+
+- `backend/app/services/ai_grading.py` — AIGradingService с критериями оценки
+- `backend/app/tasks/grading_tasks.py` — Celery задачи для асинхронной проверки
+- `backend/alembic/versions/007_ai_grading.py` — Миграция для полей `ai_grading_details`, `graded_by`, `grading_status`
+
+**Критерии оценки**:
+
+- **Short-answer**: accuracy (50%), completeness (30%), relevance (20%)
+- **Essay**: content_accuracy (25%), depth (25%), structure (20%), evidence (15%), clarity (15%)
+
+**Защита от prompt injection**: sanitize_input(), secure delimiters `[QUESTION_START]`, `[STUDENT_ANSWER_START]`
+
+---
+
+### 📝 Миграции базы данных
+
+```bash
+# Применённые миграции:
+007_ai_grading.py     # AI grading fields для answers
+008_timer_mode.py     # timer_mode для projects
+
+# Команда применения:
+docker exec mentis_backend alembic upgrade head
+```
+
+---
+
+### 🔧 Команды сборки
+
+```bash
+# Пересобрать backend и frontend:
+docker-compose up -d --build backend nginx
+
+# Пересобрать celery worker (для AI grading):
+docker-compose up -d --build celery_worker
+```
+
+---
+
 ## 📌 Обновлённый статус проекта
 
 | Компонент             | Статус      | Примечание                |
 | --------------------- | ----------- | ------------------------- |
 | Frontend (Vue 3)      | ✅ Готов    | Все views реализованы     |
 | Backend (FastAPI)     | ✅ Готов    | Все endpoints реализованы |
-| PostgreSQL            | ✅ Работает | 6 миграций применены      |
+| PostgreSQL            | ✅ Работает | 8 миграций применены      |
 | Redis                 | ✅ Работает | Celery broker active      |
 | OpenAI Vector Stores  | ✅ Работает | +error handling           |
 | Celery Worker         | ✅ Работает | Генерация работает        |
@@ -2265,22 +2355,23 @@ docker ps
 | Cloudflare Tunnel     | ✅ Работает | HTTPS                     |
 | **AI Generation**     | ✅ РАБОТАЕТ | Контент из документов     |
 | **Test Variants**     | ✅ РАБОТАЕТ | Случайное присвоение      |
-| **Score Calculation** | ✅ РАБОТАЕТ | По варианту (8 вопросов)  |
-| **Countdown Timer**   | ✅ РАБОТАЕТ | Real-time обновление      |
+| **Score Calculation** | ✅ РАБОТАЕТ | По варианту               |
+| **Timer Mode**        | ✅ РАБОТАЕТ | total / per_question      |
+| **AI Grading**        | 🔶 Готово   | Требует тестирования      |
 
 ---
 
 ## 🚀 Приоритеты на следующую сессию
 
-1. **WebSocket для Lobby** — real-time обновление статуса студентов
-2. **Статистика по вариантам** — сравнение результатов между вариантами
-3. **Улучшение UI** — показывать номер варианта студенту
-4. **Тестирование edge cases** — множественные одновременные тесты
-5. **Мониторинг** — Prometheus/Grafana для отслеживания
+1. **Тестирование AI Grading** — проверить работу оценки эссе
+2. **WebSocket для Lobby** — real-time обновление статуса студентов
+3. **Отображение AI feedback** — показать студенту детальную оценку
+4. **Manual review interface** — учитель может изменить AI-оценку
+5. **Мониторинг** — Prometheus/Grafana
 
 ---
 
-_Последнее обновление: 8 декабря 2025_
+_Последнее обновление: 11 декабря 2025_
 _Автор сессии: Claude Opus 4.5 (Preview)_
 _Frontend версия: 0.0.0 (pre-release)_
-_Backend версия: 1.2.0_
+_Backend версия: 1.3.0_

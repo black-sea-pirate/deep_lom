@@ -31,7 +31,7 @@ interface Question {
   text: string;
   points: number;
   options?: string[];
-  correctAnswer?: string | string[];
+  correctAnswer?: number | number[] | string | string[] | boolean;
   expectedKeywords?: string[];
   order: number;
   variantNumber?: number;
@@ -105,6 +105,51 @@ const loadQuestions = async () => {
 onMounted(() => {
   loadQuestions();
 });
+
+// Check if an option is the correct answer
+const isCorrectOption = (question: Question, optionIndex: number): boolean => {
+  const correct = question.correctAnswer;
+  
+  // For single-choice: correctAnswer is an index (number)
+  if (question.questionType === "single-choice") {
+    if (typeof correct === "number") {
+      return correct === optionIndex;
+    }
+    // Sometimes it might be a string index
+    if (typeof correct === "string" && !isNaN(parseInt(correct))) {
+      return parseInt(correct) === optionIndex;
+    }
+    // Fallback: compare with option text (legacy format)
+    if (typeof correct === "string" && question.options) {
+      return question.options[optionIndex] === correct;
+    }
+  }
+  
+  // For multiple-choice: correctAnswer is an array of indices
+  if (question.questionType === "multiple-choice") {
+    if (Array.isArray(correct)) {
+      return (correct as (number | string)[]).includes(optionIndex) || 
+             (correct as (number | string)[]).includes(optionIndex.toString());
+    }
+  }
+  
+  // For true-false: not shown in options list
+  if (question.questionType === "true-false") {
+    return false;
+  }
+  
+  return false;
+};
+
+// Check if question has any correct option marked
+const hasCorrectOption = (question: Question): boolean => {
+  if (!question.options || question.options.length === 0) return true;
+  
+  for (let i = 0; i < question.options.length; i++) {
+    if (isCorrectOption(question, i)) return true;
+  }
+  return false;
+};
 
 // Question type labels
 const questionTypeLabel = (type: string): string => {
@@ -332,9 +377,7 @@ const goBack = () => {
               :key="optIndex"
               class="option-item"
               :class="{
-                correct: Array.isArray(question.correctAnswer)
-                  ? question.correctAnswer.includes(option)
-                  : question.correctAnswer === option,
+                correct: isCorrectOption(question, optIndex),
               }"
             >
               <span class="option-letter">{{
@@ -342,16 +385,35 @@ const goBack = () => {
               }}</span>
               <span class="option-text">{{ option }}</span>
               <el-icon
-                v-if="
-                  Array.isArray(question.correctAnswer)
-                    ? question.correctAnswer.includes(option)
-                    : question.correctAnswer === option
-                "
+                v-if="isCorrectOption(question, optIndex)"
                 class="correct-icon"
               >
                 <Check />
               </el-icon>
             </div>
+          </div>
+
+          <!-- True/False correct answer -->
+          <div
+            v-if="question.questionType === 'true-false'"
+            class="true-false-answer"
+          >
+            <span class="answer-label">Correct Answer:</span>
+            <el-tag :type="question.correctAnswer === true ? 'success' : 'danger'" size="default">
+              {{ question.correctAnswer === true ? 'True' : question.correctAnswer === false ? 'False' : 'Not set' }}
+            </el-tag>
+          </div>
+
+          <!-- Debug: Show raw correctAnswer if no options marked correct -->
+          <div
+            v-if="question.options?.length && !hasCorrectOption(question)"
+            class="debug-answer"
+          >
+            <el-alert type="warning" :closable="false" show-icon>
+              <template #title>
+                <span>No correct answer marked. Raw value: {{ JSON.stringify(question.correctAnswer) }}</span>
+              </template>
+            </el-alert>
           </div>
 
           <!-- Expected keywords for short answer -->

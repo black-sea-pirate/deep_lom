@@ -131,6 +131,37 @@ export default {
     settings: "Налаштування",
   },
 
+  // Lobby view translations
+  lobby: {
+    testResults: "Результати тестування",
+    completed: "завершено",
+    inProgress: "в процесі",
+    testStatus: "Статус тесту",
+    score: "Бали",
+    timeTaken: "Час",
+    grading: "Перевірка",
+    viewAnswers: "Переглянути відповіді",
+    resetAccess: "Скинути доступ (дозволити повторну спробу)",
+    deleteResults: "Видалити результати",
+    notStartedYet: "Ще не розпочав",
+    noResultsYet: "Результатів поки немає",
+    statusPending: "Очікування",
+    statusInProgress: "В процесі",
+    statusCompleted: "Завершено",
+    statusGraded: "Перевірено",
+    statusNotStarted: "Не розпочато",
+    confirmDeleteResults:
+      "Ви впевнені, що хочете видалити всі результати тестування для",
+    confirmDeleteWarning:
+      "Цю дію не можна скасувати. Всі дані тесту будуть видалені назавжди.",
+    confirmResetAccess: "Ви впевнені, що хочете скинути доступ до тесту для",
+    confirmResetWarning:
+      "Це видалить будь-яку незавершену спробу тесту, дозволяючи студенту почати заново.",
+    deleteSuccess: "Результати тесту успішно видалено",
+    resetSuccess: "Доступ до тесту успішно скинуто",
+    studentAnswers: "Відповіді студента",
+  },
+
   // Teacher Settings
   teacherSettings: {
     title: "Налаштування акаунту",

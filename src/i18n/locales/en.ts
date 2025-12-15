@@ -9,6 +9,9 @@ export default {
     password: "Password",
     firstName: "First Name",
     lastName: "Last Name",
+    name: "Name",
+    status: "Status",
+    actions: "Actions",
     save: "Save",
     cancel: "Cancel",
     delete: "Delete",
@@ -99,6 +102,9 @@ export default {
     matching: "Matching",
     questionCount: "Number of Questions",
     waitingStudents: "Waiting Students",
+    onlineNow: "Online Now",
+    waitingForStudents:
+      "No students online yet. Waiting for students to join...",
     readyToStart: "Ready to Start",
     addStudent: "Add Student",
     removeStudent: "Remove Student",
@@ -129,6 +135,37 @@ export default {
     lobbyHub: "Conducting / Lobby",
     analyticsReports: "Analytics & Reports",
     settings: "Settings",
+  },
+
+  // Lobby view translations
+  lobby: {
+    testResults: "Test Results",
+    completed: "completed",
+    inProgress: "in progress",
+    testStatus: "Test Status",
+    score: "Score",
+    timeTaken: "Time",
+    grading: "Grading",
+    viewAnswers: "View Answers",
+    resetAccess: "Reset Access (allow retry)",
+    deleteResults: "Delete Results",
+    notStartedYet: "Not started yet",
+    noResultsYet: "No test results yet",
+    statusPending: "Pending",
+    statusInProgress: "In Progress",
+    statusCompleted: "Completed",
+    statusGraded: "Graded",
+    statusNotStarted: "Not Started",
+    confirmDeleteResults:
+      "Are you sure you want to delete all test results for",
+    confirmDeleteWarning:
+      "This action cannot be undone. All test data will be permanently removed.",
+    confirmResetAccess: "Are you sure you want to reset test access for",
+    confirmResetWarning:
+      "This will delete any incomplete test attempt, allowing the student to start fresh.",
+    deleteSuccess: "Test results deleted successfully",
+    resetSuccess: "Test access reset successfully",
+    studentAnswers: "Student Answers",
   },
 
   // Teacher Settings

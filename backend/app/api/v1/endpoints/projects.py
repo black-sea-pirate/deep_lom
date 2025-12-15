@@ -1164,3 +1164,240 @@ async def remove_student_from_project(
         "message": "Student removed successfully",
         "students": _build_student_profiles(project.allowed_students, participants),
     }
+
+
+@router.get("/{project_id}/test-results")
+async def get_project_test_results(
+    project_id: UUID,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get test results for all students in a project.
+    Returns status, score, time taken for each student.
+    """
+    from app.models.test import Test, Answer
+    from app.models.participant import Participant
+    
+    # Verify project ownership
+    query = select(Project).where(
+        Project.id == project_id,
+        Project.teacher_id == current_user.id,
+    )
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    
+    if not project:
+        raise NotFoundException(resource="Project", resource_id=str(project_id))
+    
+    # Get all tests for this project with student info
+    tests_query = (
+        select(Test)
+        .options(selectinload(Test.student), selectinload(Test.answers))
+        .where(Test.project_id == project_id)
+    )
+    tests_result = await db.execute(tests_query)
+    tests = tests_result.scalars().all()
+    
+    # Get participant profiles for names
+    allowed_emails = project.allowed_students or []
+    participants_result = await db.execute(
+        select(Participant).where(
+            Participant.teacher_id == current_user.id,
+            Participant.email.in_([e.lower() for e in allowed_emails]),
+        )
+    )
+    participants = {p.email.lower(): p for p in participants_result.scalars().all()}
+    
+    # Build results
+    results = []
+    students_with_tests = set()
+    
+    for test in tests:
+        if not test.student:
+            continue
+            
+        students_with_tests.add(test.student.email.lower())
+        
+        # Calculate time taken
+        time_taken = None
+        if test.started_at and test.completed_at:
+            time_taken = int((test.completed_at - test.started_at).total_seconds())
+        elif test.started_at:
+            from datetime import datetime
+            time_taken = int((datetime.utcnow() - test.started_at).total_seconds())
+        
+        # Calculate score and grading info
+        total_questions = len(test.answers)
+        graded_count = sum(1 for a in test.answers if a.grading_status == 'completed')
+        pending_ai_grading = sum(1 for a in test.answers if a.grading_status in ('pending', 'in_progress'))
+        
+        # Get participant info
+        participant = participants.get(test.student.email.lower())
+        
+        results.append({
+            "testId": str(test.id),
+            "studentId": str(test.student_id),
+            "email": test.student.email,
+            "firstName": participant.first_name if participant else test.student.first_name,
+            "lastName": participant.last_name if participant else test.student.last_name,
+            "status": test.status,  # pending, in-progress, completed, graded
+            "score": test.score,
+            "maxScore": test.max_score,
+            "timeTaken": time_taken,
+            "startedAt": test.started_at.isoformat() if test.started_at else None,
+            "completedAt": test.completed_at.isoformat() if test.completed_at else None,
+            "variantNumber": test.variant_number,
+            "totalQuestions": total_questions,
+            "gradedQuestions": graded_count,
+            "pendingAiGrading": pending_ai_grading,
+        })
+    
+    # Add students who haven't started yet
+    for email in allowed_emails:
+        if email.lower() not in students_with_tests:
+            participant = participants.get(email.lower())
+            results.append({
+                "testId": None,
+                "studentId": None,
+                "email": email,
+                "firstName": participant.first_name if participant else None,
+                "lastName": participant.last_name if participant else None,
+                "status": "not_started",
+                "score": None,
+                "maxScore": None,
+                "timeTaken": None,
+                "startedAt": None,
+                "completedAt": None,
+                "variantNumber": None,
+                "totalQuestions": 0,
+                "gradedQuestions": 0,
+                "pendingAiGrading": 0,
+            })
+    
+    return {"results": results}
+
+
+@router.delete("/{project_id}/test-results/{student_email}")
+async def delete_student_test_results(
+    project_id: UUID,
+    student_email: str,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete test results for a specific student in a project.
+    This allows the student to retake the test.
+    """
+    from app.models.test import Test
+    
+    student_email = student_email.strip().lower()
+    
+    # Verify project ownership
+    query = select(Project).where(
+        Project.id == project_id,
+        Project.teacher_id == current_user.id,
+    )
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    
+    if not project:
+        raise NotFoundException(resource="Project", resource_id=str(project_id))
+    
+    # Find student by email
+    student_result = await db.execute(
+        select(User).where(func.lower(User.email) == student_email)
+    )
+    student = student_result.scalar_one_or_none()
+    
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+    
+    # Delete all tests for this student in this project
+    tests_result = await db.execute(
+        select(Test).where(
+            Test.project_id == project_id,
+            Test.student_id == student.id,
+        )
+    )
+    tests = tests_result.scalars().all()
+    
+    deleted_count = 0
+    for test in tests:
+        await db.delete(test)
+        deleted_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Deleted {deleted_count} test(s) for student",
+        "deletedCount": deleted_count,
+    }
+
+
+@router.post("/{project_id}/reset-student/{student_email}")
+async def reset_student_test_access(
+    project_id: UUID,
+    student_email: str,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reset student's test access - delete their incomplete test
+    and allow them to start fresh. For cases when student had
+    technical issues (lag, browser crash, etc.)
+    """
+    from app.models.test import Test
+    
+    student_email = student_email.strip().lower()
+    
+    # Verify project ownership
+    query = select(Project).where(
+        Project.id == project_id,
+        Project.teacher_id == current_user.id,
+    )
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    
+    if not project:
+        raise NotFoundException(resource="Project", resource_id=str(project_id))
+    
+    # Find student by email
+    student_result = await db.execute(
+        select(User).where(func.lower(User.email) == student_email)
+    )
+    student = student_result.scalar_one_or_none()
+    
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
+        )
+    
+    # Find any incomplete tests
+    tests_result = await db.execute(
+        select(Test).where(
+            Test.project_id == project_id,
+            Test.student_id == student.id,
+            Test.status.in_(["pending", "in-progress"]),
+        )
+    )
+    incomplete_tests = tests_result.scalars().all()
+    
+    # Delete incomplete tests
+    reset_count = 0
+    for test in incomplete_tests:
+        await db.delete(test)
+        reset_count += 1
+    
+    await db.commit()
+    
+    return {
+        "message": f"Reset access for student. Deleted {reset_count} incomplete test(s).",
+        "resetCount": reset_count,
+        "studentEmail": student_email,
+    }
+

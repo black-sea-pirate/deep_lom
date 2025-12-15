@@ -337,6 +337,82 @@ export const projectService = {
     }>(`/projects/${id}/students/${encodeURIComponent(email)}`);
     return response.data;
   },
+
+  /**
+   * Get test results for all students in a project
+   * @param id - Project ID
+   * @returns Test results for each student
+   */
+  async getTestResults(id: string): Promise<TestResultsResponse> {
+    const response = await api.get<TestResultsResponse>(
+      `/projects/${id}/test-results`
+    );
+    return response.data;
+  },
+
+  /**
+   * Delete test results for a specific student
+   * @param projectId - Project ID
+   * @param studentEmail - Student email
+   * @returns Deletion confirmation
+   */
+  async deleteStudentTestResults(
+    projectId: string,
+    studentEmail: string
+  ): Promise<{ message: string; deletedCount: number }> {
+    const response = await api.delete<{
+      message: string;
+      deletedCount: number;
+    }>(
+      `/projects/${projectId}/test-results/${encodeURIComponent(studentEmail)}`
+    );
+    return response.data;
+  },
+
+  /**
+   * Reset student test access (for technical issues)
+   * @param projectId - Project ID
+   * @param studentEmail - Student email
+   * @returns Reset confirmation
+   */
+  async resetStudentTestAccess(
+    projectId: string,
+    studentEmail: string
+  ): Promise<{ message: string; resetCount: number; studentEmail: string }> {
+    const response = await api.post<{
+      message: string;
+      resetCount: number;
+      studentEmail: string;
+    }>(
+      `/projects/${projectId}/reset-student/${encodeURIComponent(studentEmail)}`
+    );
+    return response.data;
+  },
 };
+
+/**
+ * Test result for a student
+ */
+export interface StudentTestResult {
+  testId: string | null;
+  studentId: string | null;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  status: "not_started" | "pending" | "in-progress" | "completed" | "graded";
+  score: number | null;
+  maxScore: number | null;
+  timeTaken: number | null; // seconds
+  startedAt: string | null;
+  completedAt: string | null;
+  variantNumber: number | null;
+  totalQuestions: number;
+  gradedQuestions: number;
+  pendingAiGrading: number;
+}
+
+export interface TestResultsResponse {
+  results: StudentTestResult[];
+}
 
 export default projectService;

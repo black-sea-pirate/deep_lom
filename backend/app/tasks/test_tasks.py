@@ -124,13 +124,18 @@ def generate_test_questions(
             
             # Add new questions with variant numbers
             for i, q_data in enumerate(all_questions):
+                # Handle correctAnswer - use explicit None check because 0 is a valid value
+                correct_answer = q_data.get("correctAnswer")
+                if correct_answer is None:
+                    correct_answer = q_data.get("correctAnswers")
+                
                 question = Question(
                     project_id=UUID(project_id),
                     question_type=q_data["type"],
                     text=q_data["text"],
                     points=q_data.get("points", 1),
                     options=q_data.get("options"),
-                    correct_answer=q_data.get("correctAnswer") or q_data.get("correctAnswers"),
+                    correct_answer=correct_answer,
                     expected_keywords=q_data.get("expectedKeywords"),
                     rubric=q_data.get("rubric"),
                     matching_pairs=q_data.get("pairs"),

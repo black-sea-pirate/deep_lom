@@ -512,7 +512,10 @@ CRITICAL RULES:
 5. If the document mentions specific tools (like Cockpit), use those - not alternatives (like SSH)
 6. Return ONLY valid JSON array - no explanations
 7. ALL question text, options, and answers MUST be in {lang_name}
-8. Translate any technical content from the document into {lang_name} for the questions"""
+8. Translate any technical content from the document into {lang_name} for the questions
+9. IMPORTANT: RANDOMIZE the position of the correct answer! Do NOT always put the correct answer first. 
+   The correct answer should appear at random positions (0, 1, 2, or 3) across different questions.
+   For example: Q1 correct at index 2, Q2 correct at index 0, Q3 correct at index 3, etc."""
 
         user_prompt = f"""Based on the following DOCUMENT CONTENT, generate test questions.
 IMPORTANT: Generate ALL questions and answers in {lang_name} language, even if the source document is in a different language.
@@ -567,15 +570,157 @@ Return a JSON array of questions. No markdown, no explanations."""
         try:
             questions = json.loads(json_text)
             if isinstance(questions, list):
-                return questions
+                pass
             elif isinstance(questions, dict) and "questions" in questions:
-                return questions["questions"]
+                questions = questions["questions"]
             else:
-                return [questions]
+                questions = [questions]
+            
+            # Log raw questions before normalization
+            print(f"[DEBUG] Raw questions from AI before normalization:")
+            for i, q in enumerate(questions):
+                print(f"  Q{i+1}: type={q.get('type')}, correctAnswer={q.get('correctAnswer')}, correctAnswers={q.get('correctAnswers')}")
+            
+            # Normalize questions to ensure correctAnswer is always in proper format
+            normalized = []
+            for q in questions:
+                normalized.append(self._normalize_question(q))
+            
+            # Log after normalization
+            print(f"[DEBUG] Questions after normalization:")
+            for i, q in enumerate(normalized):
+                print(f"  Q{i+1}: type={q.get('type')}, correctAnswer={q.get('correctAnswer')}")
+            
+            # Shuffle options to ensure correct answer isn't always first
+            shuffled = []
+            for q in normalized:
+                shuffled.append(self._shuffle_options(q))
+            
+            print(f"[DEBUG] Questions after shuffling:")
+            for i, q in enumerate(shuffled):
+                print(f"  Q{i+1}: type={q.get('type')}, correctAnswer={q.get('correctAnswer')}")
+            
+            return shuffled
         except json.JSONDecodeError as e:
             print(f"Failed to parse questions JSON: {e}")
             print(f"Response text: {response_text[:500]}")
             return []
+    
+    def _normalize_question(self, q: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize a question to ensure correctAnswer is in the proper format.
+        - single-choice: int (index 0-N)
+        - multiple-choice: list of ints
+        - true-false: bool
+        """
+        q_type = q.get("type", "")
+        
+        if q_type == "single-choice":
+            # Ensure correctAnswer is an integer index
+            correct = q.get("correctAnswer")
+            if correct is None:
+                # Try correctAnswers (AI sometimes uses wrong key)
+                correct = q.get("correctAnswers")
+                if isinstance(correct, list) and len(correct) > 0:
+                    correct = correct[0]
+            
+            # If correct is a string that looks like option text, find its index
+            if isinstance(correct, str) and "options" in q:
+                options = q["options"]
+                for i, opt in enumerate(options):
+                    if opt.lower().strip() == correct.lower().strip():
+                        correct = i
+                        break
+                # If still a string and it's a digit, convert
+                if isinstance(correct, str) and correct.isdigit():
+                    correct = int(correct)
+            
+            # Ensure it's an int and within bounds
+            if isinstance(correct, int):
+                options_count = len(q.get("options", []))
+                if options_count > 0 and correct >= options_count:
+                    correct = 0  # Fallback to first option
+                q["correctAnswer"] = correct
+            else:
+                # Default to first option if we can't determine
+                q["correctAnswer"] = 0
+                print(f"Warning: Could not parse correctAnswer for question: {q.get('text', '')[:50]}")
+        
+        elif q_type == "multiple-choice":
+            # Ensure correctAnswers is a list of integers
+            correct = q.get("correctAnswers") or q.get("correctAnswer")
+            if isinstance(correct, int):
+                correct = [correct]
+            elif isinstance(correct, list):
+                # Ensure all items are ints
+                correct = [int(c) if isinstance(c, (int, str)) and str(c).isdigit() else c for c in correct]
+                correct = [c for c in correct if isinstance(c, int)]
+            else:
+                correct = [0]
+            q["correctAnswers"] = correct
+            q["correctAnswer"] = correct  # For compatibility
+        
+        elif q_type == "true-false":
+            # Ensure correctAnswer is a boolean
+            correct = q.get("correctAnswer")
+            if isinstance(correct, str):
+                correct = correct.lower() in ("true", "yes", "1", "так", "да", "правда")
+            elif isinstance(correct, int):
+                correct = bool(correct)
+            elif not isinstance(correct, bool):
+                correct = True  # Default
+            q["correctAnswer"] = correct
+        
+        return q
+    
+    def _shuffle_options(self, q: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Shuffle options for single-choice and multiple-choice questions
+        to ensure correct answer isn't always in the same position.
+        """
+        import random
+        
+        q_type = q.get("type", "")
+        options = q.get("options", [])
+        
+        if q_type == "single-choice" and len(options) > 1:
+            correct_idx = q.get("correctAnswer", 0)
+            if isinstance(correct_idx, int) and 0 <= correct_idx < len(options):
+                # Create list of (original_index, option_text) pairs
+                indexed_options = list(enumerate(options))
+                # Shuffle them
+                random.shuffle(indexed_options)
+                # Find new position of correct answer
+                new_correct_idx = None
+                new_options = []
+                for new_idx, (old_idx, opt_text) in enumerate(indexed_options):
+                    new_options.append(opt_text)
+                    if old_idx == correct_idx:
+                        new_correct_idx = new_idx
+                
+                q["options"] = new_options
+                q["correctAnswer"] = new_correct_idx if new_correct_idx is not None else 0
+        
+        elif q_type == "multiple-choice" and len(options) > 1:
+            correct_indices = q.get("correctAnswers", q.get("correctAnswer", []))
+            if not isinstance(correct_indices, list):
+                correct_indices = [correct_indices] if correct_indices is not None else []
+            
+            # Create list of (original_index, option_text) pairs
+            indexed_options = list(enumerate(options))
+            # Shuffle them
+            random.shuffle(indexed_options)
+            
+            # Map old indices to new indices
+            old_to_new = {old_idx: new_idx for new_idx, (old_idx, _) in enumerate(indexed_options)}
+            new_options = [opt_text for _, opt_text in indexed_options]
+            new_correct_indices = [old_to_new[old_idx] for old_idx in correct_indices if old_idx in old_to_new]
+            
+            q["options"] = new_options
+            q["correctAnswers"] = new_correct_indices
+            q["correctAnswer"] = new_correct_indices
+        
+        return q
     
     def cleanup_assistant(self, assistant_id: str) -> bool:
         """

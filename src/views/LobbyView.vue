@@ -1,18 +1,33 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useProjectStore } from "@/stores/project";
 import { useI18n } from "vue-i18n";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { Message, Clock, Refresh, User } from "@element-plus/icons-vue";
+import {
+  Message,
+  Clock,
+  Refresh,
+  User,
+  Connection,
+  View,
+  Delete,
+  RefreshRight,
+} from "@element-plus/icons-vue";
 import {
   projectService,
   type ProjectStudent,
+  type StudentTestResult,
 } from "@/services/project.service";
 import {
   participantService,
   type Participant,
 } from "@/services/participant.service";
+import {
+  useLobbyWebSocket,
+  type LobbyStudent,
+  type ConnectionStatus,
+} from "@/services/websocket.service";
 
 const route = useRoute();
 const router = useRouter();
@@ -20,12 +35,41 @@ const projectStore = useProjectStore();
 const { t } = useI18n();
 
 const projectId = route.params.id as string;
-const project = computed(() => projectStore.getProject(projectId));
+// Use currentProject from store (set by fetchProject) or fallback to projects list
+const project = computed(() =>
+  projectStore.currentProject?.id === projectId
+    ? projectStore.currentProject
+    : projectStore.getProject(projectId)
+);
 
-// Real students data from backend
+// Real students data from backend (allowed list)
 const allowedStudents = ref<ProjectStudent[]>([]);
 const loading = ref(false);
 const addingStudent = ref(false);
+const projectLoading = ref(true);
+
+// Test results data
+const testResults = ref<StudentTestResult[]>([]);
+const loadingResults = ref(false);
+let resultsRefreshInterval: ReturnType<typeof setInterval> | null = null;
+
+// Computed properties for test results stats
+const completedResults = computed(() =>
+  testResults.value.filter(
+    (r) => r.status === "completed" || r.status === "graded"
+  )
+);
+const inProgressResults = computed(() =>
+  testResults.value.filter((r) => r.status === "in-progress")
+);
+
+// WebSocket for real-time lobby
+const lobbyWs = useLobbyWebSocket();
+const wsStatus = computed(() => lobbyWs.connectionStatus.value);
+const onlineStudents = computed(() => lobbyWs.lobbyState.students);
+const onlineCount = computed(() => lobbyWs.lobbyState.student_count);
+const readyCount = computed(() => lobbyWs.readyCount);
+const allReady = computed(() => lobbyWs.allReady);
 
 // Confirmed contacts from teacher's database
 const confirmedContacts = ref<Participant[]>([]);
@@ -38,18 +82,69 @@ const scheduleForm = ref({
   endTime: new Date(Date.now() + 5 * 60 * 60 * 1000), // +5 hours
 });
 
+// Setup WebSocket callbacks
+lobbyWs.setCallbacks({
+  onStudentJoined: (student) => {
+    ElMessage.success(
+      `${student.first_name} ${student.last_name} joined the lobby`
+    );
+  },
+  onStudentLeft: (userId, name) => {
+    ElMessage.info(`${name} left the lobby`);
+  },
+  onStudentReady: (userId, status) => {
+    const student = onlineStudents.value.find((s) => s.user_id === userId);
+    if (student) {
+      ElMessage.info(`${student.first_name} is ${status}`);
+    }
+  },
+  onError: (message) => {
+    ElMessage.error(`WebSocket error: ${message}`);
+  },
+});
+
 // Load project and students on mount
 onMounted(async () => {
   await loadProject();
-  await Promise.all([loadStudents(), loadConfirmedContacts()]);
+  await Promise.all([
+    loadStudents(),
+    loadConfirmedContacts(),
+    loadTestResults(),
+  ]);
+
+  // Connect to WebSocket lobby as teacher
+  await connectToLobby();
+
+  // Start periodic refresh of test results (every 10 seconds)
+  resultsRefreshInterval = setInterval(() => {
+    loadTestResults();
+  }, 10000);
 });
 
+// Cleanup on unmount
+onUnmounted(() => {
+  lobbyWs.disconnect();
+  if (resultsRefreshInterval) {
+    clearInterval(resultsRefreshInterval);
+  }
+});
+
+const connectToLobby = async () => {
+  const connected = await lobbyWs.connectAsTeacher(projectId);
+  if (!connected) {
+    console.warn("WebSocket connection failed, using REST polling fallback");
+  }
+};
+
 const loadProject = async () => {
+  projectLoading.value = true;
   try {
     await projectStore.fetchProject(projectId);
   } catch (error) {
     console.error("Error loading project:", error);
     ElMessage.error("Failed to load project");
+  } finally {
+    projectLoading.value = false;
   }
 };
 
@@ -77,6 +172,143 @@ const loadConfirmedContacts = async () => {
   } finally {
     loadingContacts.value = false;
   }
+};
+
+// Load test results
+const loadTestResults = async () => {
+  loadingResults.value = true;
+  try {
+    const response = await projectService.getTestResults(projectId);
+    testResults.value = response.results;
+  } catch (error) {
+    console.error("Error loading test results:", error);
+    testResults.value = [];
+  } finally {
+    loadingResults.value = false;
+  }
+};
+
+// Get test result for a specific student
+const getStudentTestResult = (email: string): StudentTestResult | undefined => {
+  return testResults.value.find(
+    (r) => r.email.toLowerCase() === email.toLowerCase()
+  );
+};
+
+// Format time taken (seconds to mm:ss)
+const formatTimeTaken = (seconds: number | null): string => {
+  if (seconds === null) return "-";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+// Get status badge type
+const getTestStatusType = (
+  status: string
+): "success" | "warning" | "info" | "danger" | "" => {
+  switch (status) {
+    case "completed":
+    case "graded":
+      return "success";
+    case "in-progress":
+      return "warning";
+    case "not_started":
+      return "info";
+    case "pending":
+      return "";
+    default:
+      return "info";
+  }
+};
+
+// Get status label
+const getTestStatusLabel = (status: string): string => {
+  switch (status) {
+    case "completed":
+      return t("lobby.completed") || "Completed";
+    case "graded":
+      return t("lobby.graded") || "Graded";
+    case "in-progress":
+      return t("lobby.inProgress") || "In Progress";
+    case "not_started":
+      return t("lobby.notStarted") || "Not Started";
+    case "pending":
+      return t("lobby.pending") || "Pending";
+    default:
+      return status;
+  }
+};
+
+// Calculate score percentage
+const getScorePercent = (
+  score: number | null,
+  maxScore: number | null
+): string => {
+  if (score === null || maxScore === null || maxScore === 0) return "-";
+  return Math.round((score / maxScore) * 100) + "%";
+};
+
+// Delete student test results
+const handleDeleteResults = async (email: string, name: string) => {
+  try {
+    await ElMessageBox.confirm(
+      t("lobby.confirmDeleteResults", { name }) ||
+        `Delete all test results for ${name}? This action cannot be undone.`,
+      t("common.confirm") || "Confirm",
+      {
+        confirmButtonText: t("common.delete") || "Delete",
+        cancelButtonText: t("common.cancel") || "Cancel",
+        type: "warning",
+      }
+    );
+
+    await projectService.deleteStudentTestResults(projectId, email);
+    ElMessage.success(
+      t("lobby.resultsDeleted") || "Results deleted successfully"
+    );
+    await loadTestResults();
+  } catch (error: any) {
+    if (error !== "cancel") {
+      console.error("Error deleting results:", error);
+      ElMessage.error(
+        error.response?.data?.detail || "Failed to delete results"
+      );
+    }
+  }
+};
+
+// Reset student test access
+const handleResetAccess = async (email: string, name: string) => {
+  try {
+    await ElMessageBox.confirm(
+      t("lobby.confirmResetAccess", { name }) ||
+        `Reset test access for ${name}? This will delete their incomplete test and allow them to start fresh.`,
+      t("common.confirm") || "Confirm",
+      {
+        confirmButtonText: t("lobby.reset") || "Reset",
+        cancelButtonText: t("common.cancel") || "Cancel",
+        type: "warning",
+      }
+    );
+
+    const result = await projectService.resetStudentTestAccess(
+      projectId,
+      email
+    );
+    ElMessage.success(result.message);
+    await loadTestResults();
+  } catch (error: any) {
+    if (error !== "cancel") {
+      console.error("Error resetting access:", error);
+      ElMessage.error(error.response?.data?.detail || "Failed to reset access");
+    }
+  }
+};
+
+// View student test answers
+const handleViewAnswers = (testId: string) => {
+  router.push(`/teacher/project/${projectId}/test/${testId}/review`);
 };
 
 // Available contacts (not already in project)
@@ -205,6 +437,11 @@ const handleActivateNow = async () => {
   const totalTime = project.value.settings?.totalTime || 60;
 
   try {
+    // Start test via WebSocket (notifies all connected students instantly)
+    if (wsStatus.value === "connected") {
+      lobbyWs.startTest();
+    }
+
     await projectStore.updateProject(projectId, {
       startTime: new Date().toISOString(),
       endTime: new Date(Date.now() + totalTime * 60 * 1000).toISOString(),
@@ -219,6 +456,27 @@ const handleActivateNow = async () => {
     ElMessage.error(t("teacher.testStartFailed") || "Failed to start test");
   }
 };
+
+// Kick student from lobby (WebSocket)
+const handleKickFromLobby = (userId: string) => {
+  if (wsStatus.value === "connected") {
+    lobbyWs.kickStudent(userId);
+    ElMessage.success("Student removed from lobby");
+  }
+};
+
+// Get online status for a student
+const isStudentOnline = (email: string): boolean => {
+  return onlineStudents.value.some(
+    (s) => s.email.toLowerCase() === email.toLowerCase()
+  );
+};
+
+const getOnlineStudent = (email: string): LobbyStudent | undefined => {
+  return onlineStudents.value.find(
+    (s) => s.email.toLowerCase() === email.toLowerCase()
+  );
+};
 </script>
 
 <template>
@@ -230,15 +488,121 @@ const handleActivateNow = async () => {
             <h1>{{ project?.title }} - {{ t("teacher.lobby") }}</h1>
             <p class="subtitle">{{ project?.groupName }}</p>
           </div>
-          <el-button @click="router.push('/teacher')">
-            {{ t("common.back") }}
-          </el-button>
+          <div class="header-right">
+            <!-- WebSocket connection status -->
+            <el-tag
+              :type="
+                wsStatus === 'connected'
+                  ? 'success'
+                  : wsStatus === 'connecting'
+                  ? 'warning'
+                  : 'danger'
+              "
+              effect="dark"
+              size="small"
+              style="margin-right: 12px"
+            >
+              <el-icon><Connection /></el-icon>
+              {{
+                wsStatus === "connected"
+                  ? "Live"
+                  : wsStatus === "connecting"
+                  ? "Connecting..."
+                  : "Offline"
+              }}
+            </el-tag>
+            <el-button @click="router.push('/teacher')">
+              {{ t("common.back") }}
+            </el-button>
+          </div>
         </div>
       </el-header>
 
-      <el-main>
-        <el-row :gutter="20">
+      <el-main v-loading="projectLoading">
+        <el-row :gutter="20" v-if="project">
           <el-col :xs="24" :lg="16">
+            <!-- Online Students Card (WebSocket) -->
+            <el-card
+              v-if="wsStatus === 'connected'"
+              class="online-card"
+              style="margin-bottom: 20px"
+            >
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <h2>
+                    🟢 {{ t("teacher.onlineNow") }} ({{ onlineCount }}/{{
+                      project.settings?.maxStudents || 30
+                    }})
+                  </h2>
+                  <div>
+                    <el-tag
+                      type="success"
+                      size="small"
+                      style="margin-right: 8px"
+                    >
+                      Ready: {{ readyCount }}/{{ onlineCount }}
+                    </el-tag>
+                    <el-tag
+                      v-if="allReady && onlineCount > 0"
+                      type="success"
+                      effect="dark"
+                      size="small"
+                    >
+                      All Ready!
+                    </el-tag>
+                  </div>
+                </div>
+              </template>
+
+              <el-table
+                :data="onlineStudents"
+                style="width: 100%"
+                v-if="onlineStudents.length > 0"
+              >
+                <el-table-column type="index" width="50" label="#" />
+                <el-table-column :label="t('common.name')">
+                  <template #default="{ row }">
+                    <span class="student-name">
+                      {{ row.first_name }} {{ row.last_name }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="email" :label="t('common.email')" />
+                <el-table-column :label="t('common.status')" width="120">
+                  <template #default="{ row }">
+                    <el-tag
+                      size="small"
+                      :type="row.status === 'ready' ? 'success' : 'info'"
+                      effect="dark"
+                    >
+                      {{ row.status === "ready" ? "✓ Ready" : "⏳ Waiting" }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column :label="t('common.actions')" width="100">
+                  <template #default="{ row }">
+                    <el-button
+                      type="danger"
+                      size="small"
+                      @click="handleKickFromLobby(row.user_id)"
+                    >
+                      Kick
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+
+              <el-empty
+                v-else
+                :description="
+                  t('teacher.waitingForStudents') ||
+                  'No students online yet. Waiting for students to join...'
+                "
+                :image-size="60"
+              />
+            </el-card>
+
+            <!-- Allowed Students Card (REST API managed) -->
             <el-card>
               <template #header>
                 <div class="flex items-center justify-between">
@@ -319,12 +683,28 @@ const handleActivateNow = async () => {
                 <el-table-column type="index" width="50" label="#" />
                 <el-table-column :label="t('common.name')">
                   <template #default="{ row }">
-                    <span class="student-name">
-                      {{ row.firstName || "" }} {{ row.lastName || "" }}
-                    </span>
+                    <div class="student-name-cell">
+                      <span v-if="isStudentOnline(row.email)" class="online-dot"
+                        >🟢</span
+                      >
+                      <span v-else class="offline-dot">⚪</span>
+                      <span class="student-name">
+                        {{ row.firstName || "" }} {{ row.lastName || "" }}
+                      </span>
+                    </div>
                   </template>
                 </el-table-column>
                 <el-table-column prop="email" :label="t('common.email')" />
+                <el-table-column :label="'Online'" width="100">
+                  <template #default="{ row }">
+                    <el-tag
+                      size="small"
+                      :type="isStudentOnline(row.email) ? 'success' : 'info'"
+                    >
+                      {{ isStudentOnline(row.email) ? "Online" : "Offline" }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column :label="t('common.status')" width="140">
                   <template #default="{ row }">
                     <el-tag
@@ -446,6 +826,216 @@ const handleActivateNow = async () => {
             </el-card>
           </el-col>
         </el-row>
+
+        <!-- Test Results Section -->
+        <el-row :gutter="20" style="margin-top: 20px">
+          <el-col :span="24">
+            <el-card class="results-card">
+              <template #header>
+                <div class="flex items-center justify-between">
+                  <h2>
+                    📊 {{ t("lobby.testResults") || "Test Results" }}
+                    <el-tag type="info" size="small" style="margin-left: 8px">
+                      {{ completedResults.length }}
+                      {{ t("lobby.completed") || "completed" }}
+                    </el-tag>
+                    <el-tag
+                      v-if="inProgressResults.length > 0"
+                      type="warning"
+                      size="small"
+                      style="margin-left: 4px"
+                    >
+                      {{ inProgressResults.length }}
+                      {{ t("lobby.inProgress") || "in progress" }}
+                    </el-tag>
+                  </h2>
+                  <el-button
+                    :icon="Refresh"
+                    circle
+                    size="small"
+                    @click="loadTestResults"
+                    :loading="loadingResults"
+                  />
+                </div>
+              </template>
+
+              <el-table
+                :data="testResults"
+                style="width: 100%"
+                v-loading="loadingResults"
+                :row-class-name="(row: any) => row.row.status === 'in-progress' ? 'in-progress-row' : ''"
+              >
+                <el-table-column type="index" width="50" label="#" />
+                <el-table-column :label="t('common.name')" min-width="150">
+                  <template #default="{ row }">
+                    <div class="student-name-cell">
+                      <span v-if="isStudentOnline(row.email)" class="online-dot"
+                        >🟢</span
+                      >
+                      <span v-else class="offline-dot">⚪</span>
+                      <span class="student-name">
+                        {{ row.firstName || "" }} {{ row.lastName || "" }}
+                      </span>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  prop="email"
+                  :label="t('common.email')"
+                  min-width="180"
+                />
+                <el-table-column
+                  :label="t('lobby.testStatus') || 'Test Status'"
+                  width="130"
+                >
+                  <template #default="{ row }">
+                    <el-tag
+                      size="small"
+                      :type="getTestStatusType(row.status)"
+                      effect="dark"
+                    >
+                      {{ getTestStatusLabel(row.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="t('lobby.score') || 'Score'"
+                  width="100"
+                >
+                  <template #default="{ row }">
+                    <span v-if="row.score !== null" class="score-value">
+                      {{ getScorePercent(row.score, row.maxScore) }}
+                      <span class="score-raw"
+                        >({{ row.score?.toFixed(1) }}/{{ row.maxScore }})</span
+                      >
+                    </span>
+                    <span v-else class="score-na">-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="t('lobby.timeTaken') || 'Time'"
+                  width="90"
+                >
+                  <template #default="{ row }">
+                    {{ formatTimeTaken(row.timeTaken) }}
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="t('lobby.grading') || 'Grading'"
+                  width="120"
+                >
+                  <template #default="{ row }">
+                    <div v-if="row.totalQuestions > 0">
+                      <el-progress
+                        :percentage="
+                          Math.round(
+                            (row.gradedQuestions / row.totalQuestions) * 100
+                          )
+                        "
+                        :stroke-width="6"
+                        :show-text="false"
+                        style="width: 60px; display: inline-block"
+                      />
+                      <span style="margin-left: 4px; font-size: 11px">
+                        {{ row.gradedQuestions }}/{{ row.totalQuestions }}
+                      </span>
+                      <el-tooltip
+                        v-if="row.pendingAiGrading > 0"
+                        :content="`${row.pendingAiGrading} questions pending AI grading`"
+                      >
+                        <el-icon
+                          style="
+                            margin-left: 4px;
+                            color: var(--el-color-warning);
+                          "
+                          ><Clock
+                        /></el-icon>
+                      </el-tooltip>
+                    </div>
+                    <span v-else>-</span>
+                  </template>
+                </el-table-column>
+                <el-table-column
+                  :label="t('common.actions')"
+                  width="200"
+                  fixed="right"
+                >
+                  <template #default="{ row }">
+                    <div class="action-buttons">
+                      <!-- View answers button -->
+                      <el-tooltip
+                        :content="t('lobby.viewAnswers') || 'View Answers'"
+                        v-if="row.testId"
+                      >
+                        <el-button
+                          type="primary"
+                          size="small"
+                          :icon="View"
+                          circle
+                          @click="handleViewAnswers(row.testId)"
+                        />
+                      </el-tooltip>
+
+                      <!-- Reset access button (for in-progress or pending) -->
+                      <el-tooltip
+                        :content="t('lobby.resetAccess') || 'Reset Access'"
+                        v-if="
+                          row.status === 'in-progress' ||
+                          row.status === 'pending'
+                        "
+                      >
+                        <el-button
+                          type="warning"
+                          size="small"
+                          :icon="RefreshRight"
+                          circle
+                          @click="
+                            handleResetAccess(
+                              row.email,
+                              `${row.firstName} ${row.lastName}`
+                            )
+                          "
+                        />
+                      </el-tooltip>
+
+                      <!-- Delete results button -->
+                      <el-tooltip
+                        :content="t('lobby.deleteResults') || 'Delete Results'"
+                        v-if="row.testId"
+                      >
+                        <el-button
+                          type="danger"
+                          size="small"
+                          :icon="Delete"
+                          circle
+                          @click="
+                            handleDeleteResults(
+                              row.email,
+                              `${row.firstName} ${row.lastName}`
+                            )
+                          "
+                        />
+                      </el-tooltip>
+
+                      <!-- No test yet -->
+                      <span
+                        v-if="!row.testId && row.status === 'not_started'"
+                        class="not-started-hint"
+                      >
+                        {{ t("lobby.notStartedYet") || "Not started yet" }}
+                      </span>
+                    </div>
+                  </template>
+                </el-table-column>
+              </el-table>
+
+              <el-empty
+                v-if="!loadingResults && testResults.length === 0"
+                :description="t('lobby.noResultsYet') || 'No test results yet'"
+              />
+            </el-card>
+          </el-col>
+        </el-row>
       </el-main>
     </el-container>
 
@@ -513,11 +1103,35 @@ const handleActivateNow = async () => {
       margin: 0;
       font-weight: 500;
     }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+    }
   }
 }
 
 .el-main {
   padding: var(--spacing-xl);
+}
+
+.online-card {
+  border: 2px solid var(--el-color-success-light-5);
+
+  :deep(.el-card__header) {
+    background: var(--el-color-success-light-9);
+  }
+}
+
+.student-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  .online-dot,
+  .offline-dot {
+    font-size: 10px;
+  }
 }
 
 .add-student-section {
@@ -576,6 +1190,66 @@ const handleActivateNow = async () => {
       margin-right: 0 !important;
       margin-bottom: var(--spacing-md);
     }
+  }
+}
+
+/* Test Results Section Styles */
+.results-card {
+  h2 {
+    margin: 0;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.student-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .online-dot,
+  .offline-dot {
+    font-size: 10px;
+  }
+
+  .student-name {
+    font-weight: 500;
+  }
+}
+
+.score-value {
+  font-weight: 600;
+  color: var(--el-color-success);
+
+  .score-raw {
+    font-size: 0.8em;
+    font-weight: normal;
+    color: var(--el-text-color-secondary);
+    margin-left: 2px;
+  }
+}
+
+.score-na {
+  color: var(--el-text-color-placeholder);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.not-started-hint {
+  font-size: 0.8em;
+  color: var(--el-text-color-placeholder);
+  font-style: italic;
+}
+
+.el-table {
+  .in-progress-row {
+    background-color: rgba(var(--el-color-warning-rgb), 0.05);
   }
 }
 </style>
