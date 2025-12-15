@@ -109,7 +109,7 @@ onMounted(() => {
 // Check if an option is the correct answer
 const isCorrectOption = (question: Question, optionIndex: number): boolean => {
   const correct = question.correctAnswer;
-  
+
   // For single-choice: correctAnswer is an index (number)
   if (question.questionType === "single-choice") {
     if (typeof correct === "number") {
@@ -124,27 +124,29 @@ const isCorrectOption = (question: Question, optionIndex: number): boolean => {
       return question.options[optionIndex] === correct;
     }
   }
-  
+
   // For multiple-choice: correctAnswer is an array of indices
   if (question.questionType === "multiple-choice") {
     if (Array.isArray(correct)) {
-      return (correct as (number | string)[]).includes(optionIndex) || 
-             (correct as (number | string)[]).includes(optionIndex.toString());
+      return (
+        (correct as (number | string)[]).includes(optionIndex) ||
+        (correct as (number | string)[]).includes(optionIndex.toString())
+      );
     }
   }
-  
+
   // For true-false: not shown in options list
   if (question.questionType === "true-false") {
     return false;
   }
-  
+
   return false;
 };
 
 // Check if question has any correct option marked
 const hasCorrectOption = (question: Question): boolean => {
   if (!question.options || question.options.length === 0) return true;
-  
+
   for (let i = 0; i < question.options.length; i++) {
     if (isCorrectOption(question, i)) return true;
   }
@@ -399,8 +401,17 @@ const goBack = () => {
             class="true-false-answer"
           >
             <span class="answer-label">Correct Answer:</span>
-            <el-tag :type="question.correctAnswer === true ? 'success' : 'danger'" size="default">
-              {{ question.correctAnswer === true ? 'True' : question.correctAnswer === false ? 'False' : 'Not set' }}
+            <el-tag
+              :type="question.correctAnswer === true ? 'success' : 'danger'"
+              size="default"
+            >
+              {{
+                question.correctAnswer === true
+                  ? "True"
+                  : question.correctAnswer === false
+                  ? "False"
+                  : "Not set"
+              }}
             </el-tag>
           </div>
 
@@ -411,7 +422,10 @@ const goBack = () => {
           >
             <el-alert type="warning" :closable="false" show-icon>
               <template #title>
-                <span>No correct answer marked. Raw value: {{ JSON.stringify(question.correctAnswer) }}</span>
+                <span
+                  >No correct answer marked. Raw value:
+                  {{ JSON.stringify(question.correctAnswer) }}</span
+                >
               </template>
             </el-alert>
           </div>
