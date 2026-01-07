@@ -9,7 +9,7 @@
  */
 
 import api, { type PaginatedResponse } from "./api";
-import type { Test, Question, Answer } from "@/types";
+import type { Test, Question, Answer, TestResults } from "@/types";
 
 /**
  * Submit answer request
@@ -226,8 +226,10 @@ export const testService = {
    * @param testId - Test ID
    * @returns Full test results with feedback
    */
-  async getTestResults(testId: string): Promise<Test> {
-    const response = await api.get<Test>(`/student/tests/${testId}/results`);
+  async getTestResults(testId: string): Promise<TestResults> {
+    const response = await api.get<TestResults>(
+      `/student/tests/${testId}/results`
+    );
     return response.data;
   },
 

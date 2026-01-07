@@ -135,6 +135,56 @@ export interface Answer {
   isCorrect?: boolean;
   score?: number;
   feedback?: string;
+  gradedBy?: "ai" | "system" | "teacher" | "pending_manual_review";
+  gradingStatus?: "pending" | "in_progress" | "completed" | "failed";
+  aiGrading?: AIGradingDetails;
+}
+
+// AI Grading types
+export interface AIGradingCriterion {
+  name: string;
+  score: number; // 1-5
+  feedback: string;
+}
+
+export interface AIGradingDetails {
+  criteria: AIGradingCriterion[];
+  keyStrengths: string[];
+  areasForImprovement: string[];
+  detectedKeywords: string[];
+  percentage: number;
+}
+
+// Test Results (extended for results view)
+export interface TestResultQuestion {
+  id: string;
+  type: QuestionType;
+  text: string;
+  points: number;
+  options?: string[];
+  pairs?: MatchingPair[];
+  correctAnswer?: number | boolean | number[];
+  studentAnswer: any;
+  isCorrect: boolean;
+  score: number;
+  feedback?: string;
+  gradedBy?: string;
+  gradingStatus?: string;
+  aiGrading?: AIGradingDetails;
+}
+
+export interface TestResults {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  status: string;
+  startedAt?: Date;
+  completedAt?: Date;
+  score: number;
+  maxScore: number;
+  passed: boolean;
+  aiGradingPending: boolean;
+  questions: TestResultQuestion[];
 }
 
 // Material types
