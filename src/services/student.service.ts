@@ -53,7 +53,8 @@ export interface UpcomingTestInfo {
   startTime?: Date;
   endTime?: Date;
   duration: number;
-  status: "scheduled" | "available" | "started";
+  status: "scheduled" | "available" | "completed";
+  hasCompleted: boolean;
 }
 
 /**

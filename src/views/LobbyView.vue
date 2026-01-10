@@ -9,7 +9,6 @@ import {
   Clock,
   Refresh,
   User,
-  Connection,
   View,
   Delete,
   RefreshRight,
@@ -23,11 +22,6 @@ import {
   participantService,
   type Participant,
 } from "@/services/participant.service";
-import {
-  useLobbyWebSocket,
-  type LobbyStudent,
-  type ConnectionStatus,
-} from "@/services/websocket.service";
 
 const route = useRoute();
 const router = useRouter();
@@ -63,14 +57,6 @@ const inProgressResults = computed(() =>
   testResults.value.filter((r) => r.status === "in-progress")
 );
 
-// WebSocket for real-time lobby
-const lobbyWs = useLobbyWebSocket();
-const wsStatus = computed(() => lobbyWs.connectionStatus.value);
-const onlineStudents = computed(() => lobbyWs.lobbyState.students);
-const onlineCount = computed(() => lobbyWs.lobbyState.student_count);
-const readyCount = computed(() => lobbyWs.readyCount);
-const allReady = computed(() => lobbyWs.allReady);
-
 // Confirmed contacts from teacher's database
 const confirmedContacts = ref<Participant[]>([]);
 const selectedStudentEmail = ref<string>("");
@@ -82,27 +68,6 @@ const scheduleForm = ref({
   endTime: new Date(Date.now() + 5 * 60 * 60 * 1000), // +5 hours
 });
 
-// Setup WebSocket callbacks
-lobbyWs.setCallbacks({
-  onStudentJoined: (student) => {
-    ElMessage.success(
-      `${student.first_name} ${student.last_name} joined the lobby`
-    );
-  },
-  onStudentLeft: (userId, name) => {
-    ElMessage.info(`${name} left the lobby`);
-  },
-  onStudentReady: (userId, status) => {
-    const student = onlineStudents.value.find((s) => s.user_id === userId);
-    if (student) {
-      ElMessage.info(`${student.first_name} is ${status}`);
-    }
-  },
-  onError: (message) => {
-    ElMessage.error(`WebSocket error: ${message}`);
-  },
-});
-
 // Load project and students on mount
 onMounted(async () => {
   await loadProject();
@@ -112,9 +77,6 @@ onMounted(async () => {
     loadTestResults(),
   ]);
 
-  // Connect to WebSocket lobby as teacher
-  await connectToLobby();
-
   // Start periodic refresh of test results (every 10 seconds)
   resultsRefreshInterval = setInterval(() => {
     loadTestResults();
@@ -123,18 +85,10 @@ onMounted(async () => {
 
 // Cleanup on unmount
 onUnmounted(() => {
-  lobbyWs.disconnect();
   if (resultsRefreshInterval) {
     clearInterval(resultsRefreshInterval);
   }
 });
-
-const connectToLobby = async () => {
-  const connected = await lobbyWs.connectAsTeacher(projectId);
-  if (!connected) {
-    console.warn("WebSocket connection failed, using REST polling fallback");
-  }
-};
 
 const loadProject = async () => {
   projectLoading.value = true;
@@ -201,6 +155,23 @@ const formatTimeTaken = (seconds: number | null): string => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+// Format UTC datetime to local string
+const formatUtcToLocal = (
+  dateStr: string | Date | null | undefined
+): string => {
+  if (!dateStr) return "";
+  let timeStr = typeof dateStr === "string" ? dateStr : dateStr.toISOString();
+  // Ensure datetime is treated as UTC if no timezone specified
+  if (
+    !timeStr.endsWith("Z") &&
+    !timeStr.includes("+") &&
+    !timeStr.includes("-", 10)
+  ) {
+    timeStr += "Z";
+  }
+  return new Date(timeStr).toLocaleString();
 };
 
 // Get status badge type
@@ -434,17 +405,15 @@ const handleActivateNow = async () => {
     return;
   }
 
-  const totalTime = project.value.settings?.totalTime || 60;
+  // Availability window is 1 hour (60 minutes) for manual activation
+  const availabilityWindow = 60;
 
   try {
-    // Start test via WebSocket (notifies all connected students instantly)
-    if (wsStatus.value === "connected") {
-      lobbyWs.startTest();
-    }
-
     await projectStore.updateProject(projectId, {
       startTime: new Date().toISOString(),
-      endTime: new Date(Date.now() + totalTime * 60 * 1000).toISOString(),
+      endTime: new Date(
+        Date.now() + availabilityWindow * 60 * 1000
+      ).toISOString(),
       status: "active",
     });
 
@@ -455,27 +424,6 @@ const handleActivateNow = async () => {
     console.error("Error activating test:", error);
     ElMessage.error(t("teacher.testStartFailed") || "Failed to start test");
   }
-};
-
-// Kick student from lobby (WebSocket)
-const handleKickFromLobby = (userId: string) => {
-  if (wsStatus.value === "connected") {
-    lobbyWs.kickStudent(userId);
-    ElMessage.success("Student removed from lobby");
-  }
-};
-
-// Get online status for a student
-const isStudentOnline = (email: string): boolean => {
-  return onlineStudents.value.some(
-    (s) => s.email.toLowerCase() === email.toLowerCase()
-  );
-};
-
-const getOnlineStudent = (email: string): LobbyStudent | undefined => {
-  return onlineStudents.value.find(
-    (s) => s.email.toLowerCase() === email.toLowerCase()
-  );
 };
 </script>
 
@@ -489,28 +437,6 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
             <p class="subtitle">{{ project?.groupName }}</p>
           </div>
           <div class="header-right">
-            <!-- WebSocket connection status -->
-            <el-tag
-              :type="
-                wsStatus === 'connected'
-                  ? 'success'
-                  : wsStatus === 'connecting'
-                  ? 'warning'
-                  : 'danger'
-              "
-              effect="dark"
-              size="small"
-              style="margin-right: 12px"
-            >
-              <el-icon><Connection /></el-icon>
-              {{
-                wsStatus === "connected"
-                  ? "Live"
-                  : wsStatus === "connecting"
-                  ? "Connecting..."
-                  : "Offline"
-              }}
-            </el-tag>
             <el-button @click="router.push('/teacher')">
               {{ t("common.back") }}
             </el-button>
@@ -521,87 +447,6 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
       <el-main v-loading="projectLoading">
         <el-row :gutter="20" v-if="project">
           <el-col :xs="24" :lg="16">
-            <!-- Online Students Card (WebSocket) -->
-            <el-card
-              v-if="wsStatus === 'connected'"
-              class="online-card"
-              style="margin-bottom: 20px"
-            >
-              <template #header>
-                <div class="flex items-center justify-between">
-                  <h2>
-                    🟢 {{ t("teacher.onlineNow") }} ({{ onlineCount }}/{{
-                      project.settings?.maxStudents || 30
-                    }})
-                  </h2>
-                  <div>
-                    <el-tag
-                      type="success"
-                      size="small"
-                      style="margin-right: 8px"
-                    >
-                      Ready: {{ readyCount }}/{{ onlineCount }}
-                    </el-tag>
-                    <el-tag
-                      v-if="allReady && onlineCount > 0"
-                      type="success"
-                      effect="dark"
-                      size="small"
-                    >
-                      All Ready!
-                    </el-tag>
-                  </div>
-                </div>
-              </template>
-
-              <el-table
-                :data="onlineStudents"
-                style="width: 100%"
-                v-if="onlineStudents.length > 0"
-              >
-                <el-table-column type="index" width="50" label="#" />
-                <el-table-column :label="t('common.name')">
-                  <template #default="{ row }">
-                    <span class="student-name">
-                      {{ row.first_name }} {{ row.last_name }}
-                    </span>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="email" :label="t('common.email')" />
-                <el-table-column :label="t('common.status')" width="120">
-                  <template #default="{ row }">
-                    <el-tag
-                      size="small"
-                      :type="row.status === 'ready' ? 'success' : 'info'"
-                      effect="dark"
-                    >
-                      {{ row.status === "ready" ? "✓ Ready" : "⏳ Waiting" }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column :label="t('common.actions')" width="100">
-                  <template #default="{ row }">
-                    <el-button
-                      type="danger"
-                      size="small"
-                      @click="handleKickFromLobby(row.user_id)"
-                    >
-                      Kick
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-
-              <el-empty
-                v-else
-                :description="
-                  t('teacher.waitingForStudents') ||
-                  'No students online yet. Waiting for students to join...'
-                "
-                :image-size="60"
-              />
-            </el-card>
-
             <!-- Allowed Students Card (REST API managed) -->
             <el-card>
               <template #header>
@@ -684,10 +529,6 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
                 <el-table-column :label="t('common.name')">
                   <template #default="{ row }">
                     <div class="student-name-cell">
-                      <span v-if="isStudentOnline(row.email)" class="online-dot"
-                        >🟢</span
-                      >
-                      <span v-else class="offline-dot">⚪</span>
                       <span class="student-name">
                         {{ row.firstName || "" }} {{ row.lastName || "" }}
                       </span>
@@ -695,16 +536,6 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
                   </template>
                 </el-table-column>
                 <el-table-column prop="email" :label="t('common.email')" />
-                <el-table-column :label="'Online'" width="100">
-                  <template #default="{ row }">
-                    <el-tag
-                      size="small"
-                      :type="isStudentOnline(row.email) ? 'success' : 'info'"
-                    >
-                      {{ isStudentOnline(row.email) ? "Online" : "Offline" }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
                 <el-table-column :label="t('common.status')" width="140">
                   <template #default="{ row }">
                     <el-tag
@@ -750,7 +581,7 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
                   <div>
                     <div class="label">{{ t("teacher.availableFrom") }}</div>
                     <div class="value">
-                      {{ new Date(project.startTime).toLocaleString() }}
+                      {{ formatUtcToLocal(project.startTime) }}
                     </div>
                   </div>
                 </div>
@@ -759,7 +590,7 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
                   <div>
                     <div class="label">{{ t("teacher.availableUntil") }}</div>
                     <div class="value">
-                      {{ new Date(project.endTime).toLocaleString() }}
+                      {{ formatUtcToLocal(project.endTime) }}
                     </div>
                   </div>
                 </div>
@@ -780,18 +611,29 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
                   size="large"
                   style="width: 100%"
                   @click="showScheduleDialog = true"
+                  :disabled="project?.status === 'active'"
                 >
                   {{ t("teacher.scheduleTest") }}
                 </el-button>
 
                 <el-button
-                  type="success"
+                  :type="
+                    project?.status === 'completed' ? 'warning' : 'success'
+                  "
                   size="large"
-                  style="width: 100%; margin-top: 12px"
+                  style="width: 100%; margin-top: 12px; margin-left: 0"
                   @click="handleActivateNow"
-                  :disabled="allowedStudents.length === 0"
+                  :disabled="
+                    allowedStudents.length === 0 || project?.status === 'active'
+                  "
                 >
-                  {{ t("teacher.startTest") }}
+                  {{
+                    project?.status === "active"
+                      ? t("teacher.testInProgress") || "Test in Progress"
+                      : project?.status === "completed"
+                      ? t("teacher.restartTest") || "Restart Test"
+                      : t("teacher.startTest")
+                  }}
                 </el-button>
               </div>
             </el-card>
@@ -869,10 +711,6 @@ const getOnlineStudent = (email: string): LobbyStudent | undefined => {
                 <el-table-column :label="t('common.name')" min-width="150">
                   <template #default="{ row }">
                     <div class="student-name-cell">
-                      <span v-if="isStudentOnline(row.email)" class="online-dot"
-                        >🟢</span
-                      >
-                      <span v-else class="offline-dot">⚪</span>
                       <span class="student-name">
                         {{ row.firstName || "" }} {{ row.lastName || "" }}
                       </span>

@@ -16,6 +16,10 @@ class QuestionTypeConfigBase(BaseModel):
     """Base schema for question type configuration"""
     type: str = Field(..., pattern="^(single-choice|multiple-choice|true-false|short-answer|essay|matching)$")
     count: int = Field(default=5, ge=1, le=50)
+    time_per_question: int = Field(default=60, alias="timePerQuestion", ge=10, le=600)  # seconds per question for this type
+    
+    class Config:
+        populate_by_name = True
 
 
 class QuestionTypeConfigCreate(QuestionTypeConfigBase):

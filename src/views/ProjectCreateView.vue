@@ -64,14 +64,14 @@ const projectData = ref({
   description: "",
   timerMode: "total" as "total" | "per_question", // Timer mode selector
   totalTime: 60,
-  timePerQuestion: 120,
+  timePerQuestion: 120, // Default for legacy - will be overridden by question type times
   maxStudents: 30,
   numVariants: 3,
   testLanguage: "en", // Language for generated questions
   questionTypes: [
-    { type: "single-choice", count: 10 },
-    { type: "multiple-choice", count: 5 },
-    { type: "short-answer", count: 3 },
+    { type: "single-choice", count: 10, timePerQuestion: 60 },
+    { type: "multiple-choice", count: 5, timePerQuestion: 90 },
+    { type: "short-answer", count: 3, timePerQuestion: 180 },
   ] as QuestionTypeConfig[],
 });
 
@@ -563,19 +563,14 @@ onMounted(() => {
               <el-col :span="12">
                 <el-form-item
                   :label="t('teacher.timePerQuestion')"
-                  :class="{
-                    'timer-disabled': projectData.timerMode !== 'per_question',
-                  }"
+                  v-if="projectData.timerMode === 'per_question'"
                 >
-                  <el-input-number
-                    v-model="projectData.timePerQuestion"
-                    :min="30"
-                    :max="600"
-                    :disabled="projectData.timerMode !== 'per_question'"
-                  />
-                  <span class="time-unit">{{
-                    t("teacher.seconds") || "sec"
-                  }}</span>
+                  <div class="time-hint">
+                    {{
+                      t("teacher.timePerQuestionHint") ||
+                      "Configure time for each question type below"
+                    }}
+                  </div>
                 </el-form-item>
               </el-col>
             </el-row>
@@ -646,7 +641,7 @@ onMounted(() => {
               :key="index"
               class="question-type-row"
             >
-              <el-select v-model="qt.type" style="width: 200px">
+              <el-select v-model="qt.type" style="width: 180px">
                 <el-option
                   v-for="type in questionTypes"
                   :key="type.value"
@@ -654,7 +649,29 @@ onMounted(() => {
                   :value="type.value"
                 />
               </el-select>
-              <el-input-number v-model="qt.count" :min="1" :max="50" />
+              <el-input-number
+                v-model="qt.count"
+                :min="1"
+                :max="50"
+                style="width: 100px"
+              />
+              <div
+                class="time-per-question-input"
+                :class="{
+                  'timer-disabled': projectData.timerMode !== 'per_question',
+                }"
+              >
+                <el-input-number
+                  v-model="qt.timePerQuestion"
+                  :min="10"
+                  :max="600"
+                  :disabled="projectData.timerMode !== 'per_question'"
+                  style="width: 100px"
+                />
+                <span class="time-unit-small">{{
+                  t("teacher.seconds") || "sec"
+                }}</span>
+              </div>
               <el-button
                 type="danger"
                 :icon="Delete"
@@ -669,6 +686,7 @@ onMounted(() => {
                 projectData.questionTypes.push({
                   type: 'single-choice',
                   count: 5,
+                  timePerQuestion: 60,
                 } as QuestionTypeConfig)
               "
               style="margin-top: 16px"
@@ -782,6 +800,28 @@ onMounted(() => {
   gap: var(--spacing-md);
   align-items: center;
   margin-bottom: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.time-per-question-input {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+
+  &.timer-disabled {
+    opacity: 0.5;
+  }
+}
+
+.time-unit-small {
+  font-size: 0.85rem;
+  color: var(--color-text-light);
+}
+
+.time-hint {
+  font-size: 0.9rem;
+  color: var(--color-primary);
+  font-style: italic;
 }
 
 .setting-hint {

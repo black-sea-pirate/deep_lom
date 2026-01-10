@@ -20,6 +20,18 @@ export default {
     next: "Далі",
     finish: "Завершити",
     submit: "Відправити",
+    confirm: "Підтвердити",
+    // Test review page
+    summary: "Підсумки",
+    student: "Студент",
+    points: "Бали",
+    answers: "Відповіді",
+    studentAnswer: "Відповідь студента",
+    correctAnswer: "Правильна відповідь",
+    feedback: "Коментар",
+    name: "Ім'я",
+    status: "Статус",
+    actions: "Дії",
   },
 
   // Navigation
@@ -77,6 +89,7 @@ export default {
     perQuestionModeHint: "Встановити ліміт часу на кожне питання окремо",
     totalTime: "Загальний час",
     timePerQuestion: "Час на питання",
+    timePerQuestionHint: "Налаштуйте час для кожного типу питань нижче",
     minutes: "хв",
     seconds: "сек",
     maxStudents: "Максимум студентів",
@@ -111,6 +124,9 @@ export default {
     addStudentFirst: "Додайте хоча б одного студента перед початком тесту",
     testStarted: "Тест розпочато! Всі студенти тепер можуть розпочати.",
     testStartFailed: "Не вдалося розпочати тест",
+    testInProgress: "Тест у процесі",
+    testCompleted: "Тест завершено",
+    restartTest: "Перезапустити Тест",
     scheduleTest: "Запланувати Тест",
     startTime: "Час Початку",
     endTime: "Час Закінчення",
@@ -204,6 +220,10 @@ export default {
     nextQuestion: "Наступне",
     submitTest: "Відправити Тест",
     noUpcomingTests: "Немає майбутніх тестів",
+    // Matching questions
+    matchingInstructions:
+      "Зіставте кожен елемент зліва з правильним елементом справа",
+    selectMatch: "Виберіть відповідність",
     // Countdown timer
     available: "Доступний",
     scheduled: "Заплановано",
@@ -212,6 +232,15 @@ export default {
     testEnded: "Тест завершено",
     availableNow: "Доступний зараз",
     waitingForStart: "Очікування початку",
+    // Notifications / Contact requests
+    notifications: "Сповіщення",
+    contactRequestsInfo:
+      "Тут відображаються запити від викладачів на додавання вас до контактів",
+    teacherEmail: "Email викладача",
+    yourNameInRequest: "Ваше ім'я в запиті",
+    yourEmailInRequest: "Ваш email в запиті",
+    youConfirmed: "Ви підтвердили",
+    noContactRequests: "Немає запитів на підтвердження",
   },
 
   // Student Account

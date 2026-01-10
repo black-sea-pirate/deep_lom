@@ -108,11 +108,26 @@ export const useTestStore = defineStore("test", () => {
       currentQuestionIndex.value = 0;
 
       // Calculate time remaining based on timer mode
-      // timerMode: 'total' - use totalTime (minutes)
-      // timerMode: 'per_question' - use timePerQuestion (seconds) * number of questions
-      if (test.timerMode === "per_question" && test.timePerQuestion) {
-        // Time per question mode: timePerQuestion is in seconds
-        timeRemaining.value = test.timePerQuestion * test.questions.length;
+      if (test.timerMode === "per_question") {
+        // Time per question mode: calculate total time based on question types
+        let totalSeconds = 0;
+
+        // Build a map of question type -> time per question
+        const typeTimeMap: Record<string, number> = {};
+        if (test.questionTypeTimes && test.questionTypeTimes.length > 0) {
+          for (const qtTime of test.questionTypeTimes) {
+            typeTimeMap[qtTime.type] = qtTime.timePerQuestion;
+          }
+        }
+
+        // Sum up time for each question based on its type
+        for (const question of test.questions) {
+          const questionTime =
+            typeTimeMap[question.type] || test.timePerQuestion || 60;
+          totalSeconds += questionTime;
+        }
+
+        timeRemaining.value = totalSeconds;
       } else {
         // Total time mode (default): totalTime is in minutes
         const totalMinutes = test.totalTime || 60; // Default 60 minutes

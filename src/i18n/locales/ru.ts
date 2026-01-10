@@ -23,6 +23,15 @@ export default {
     next: "Далее",
     finish: "Завершить",
     submit: "Отправить",
+    confirm: "Подтвердить",
+    // Test review page
+    summary: "Итоги",
+    student: "Студент",
+    points: "Баллы",
+    answers: "Ответы",
+    studentAnswer: "Ответ студента",
+    correctAnswer: "Правильный ответ",
+    feedback: "Комментарий",
   },
 
   // Navigation
@@ -80,6 +89,7 @@ export default {
     perQuestionModeHint: "Установить лимит времени на каждый вопрос отдельно",
     totalTime: "Общее время",
     timePerQuestion: "Время на вопрос",
+    timePerQuestionHint: "Настройте время для каждого типа вопросов ниже",
     minutes: "мин",
     seconds: "сек",
     maxStudents: "Максимум студентов",
@@ -116,6 +126,9 @@ export default {
     addStudentFirst: "Добавьте хотя бы одного студента перед началом теста",
     testStarted: "Тест начат! Все студенты теперь могут приступить.",
     testStartFailed: "Не удалось начать тест",
+    testInProgress: "Тест в процессе",
+    testCompleted: "Тест завершён",
+    restartTest: "Перезапустить Тест",
     scheduleTest: "Запланировать Тест",
     startTime: "Время Начала",
     endTime: "Время Окончания",
@@ -209,6 +222,10 @@ export default {
     nextQuestion: "Следующий",
     submitTest: "Отправить Тест",
     noUpcomingTests: "Нет предстоящих тестов",
+    // Matching questions
+    matchingInstructions:
+      "Сопоставьте каждый элемент слева с правильным элементом справа",
+    selectMatch: "Выберите соответствие",
     // Countdown timer
     available: "Доступен",
     scheduled: "Запланирован",
@@ -217,6 +234,15 @@ export default {
     testEnded: "Тест завершён",
     availableNow: "Доступен сейчас",
     waitingForStart: "Ожидание начала",
+    // Notifications / Contact requests
+    notifications: "Уведомления",
+    contactRequestsInfo:
+      "Здесь отображаются запросы от преподавателей на добавление вас в контакты",
+    teacherEmail: "Email преподавателя",
+    yourNameInRequest: "Ваше имя в запросе",
+    yourEmailInRequest: "Ваш email в запросе",
+    youConfirmed: "Вы подтвердили",
+    noContactRequests: "Нет запросов на подтверждение",
   },
 
   // Student Account

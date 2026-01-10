@@ -113,21 +113,14 @@ const handleLogout = () => {
                 <div class="card-actions">
                   <el-button
                     v-if="
-                      project.status === 'ready' || project.status === 'active'
+                      project.status === 'ready' ||
+                      project.status === 'active' ||
+                      project.status === 'completed'
                     "
                     type="success"
                     @click="router.push(`/teacher/project/${project.id}/lobby`)"
                   >
                     {{ t("teacher.lobby") }}
-                  </el-button>
-                  <el-button
-                    v-if="project.status === 'completed'"
-                    type="info"
-                    @click="
-                      router.push(`/teacher/project/${project.id}/statistics`)
-                    "
-                  >
-                    {{ t("teacher.viewStatistics") }}
                   </el-button>
                   <el-button
                     @click="router.push(`/teacher/project/${project.id}`)"

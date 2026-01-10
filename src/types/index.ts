@@ -48,6 +48,7 @@ export interface ProjectSettings {
 export interface QuestionTypeConfig {
   type: QuestionType;
   count: number;
+  timePerQuestion: number; // seconds per question for this type (used when timerMode='per_question')
 }
 
 // Question types
@@ -112,6 +113,11 @@ export type Question =
   | MatchingQuestion;
 
 // Test types
+export interface QuestionTypeTime {
+  type: QuestionType;
+  timePerQuestion: number; // seconds
+}
+
 export interface Test {
   id: string;
   projectId: string;
@@ -126,7 +132,8 @@ export interface Test {
   // Timer settings from project
   timerMode?: "total" | "per_question"; // 'total' or 'per_question'
   totalTime?: number; // minutes (used when timerMode='total')
-  timePerQuestion?: number; // seconds (used when timerMode='per_question')
+  timePerQuestion?: number; // seconds (legacy default)
+  questionTypeTimes?: QuestionTypeTime[]; // time per question for each type
 }
 
 export interface Answer {

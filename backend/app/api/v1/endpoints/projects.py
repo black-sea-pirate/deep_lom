@@ -50,17 +50,20 @@ def project_to_response(project: Project) -> ProjectResponse:
     """Convert Project model to response schema"""
     # Build settings from project and question_type_configs
     question_types = [
-        {"type": qtc.question_type, "count": qtc.count}
+        {"type": qtc.question_type, "count": qtc.count, "timePerQuestion": qtc.time_per_question}
         for qtc in project.question_type_configs
     ] if project.question_type_configs else []
     
     settings = None
     if question_types or project.total_time or project.time_per_question:
         settings = ProjectSettingsBase(
+            timerMode=project.timer_mode or "total",
             totalTime=project.total_time,
             timePerQuestion=project.time_per_question,
             questionTypes=question_types,
             maxStudents=project.max_students,
+            numVariants=project.num_variants or 1,
+            testLanguage=project.test_language or "en",
         )
     
     # Convert materials
@@ -425,6 +428,7 @@ async def configure_project_settings(
         pass
     
     # Update settings
+    project.timer_mode = settings_data.settings.timer_mode  # ВАЖНО: сохраняем timer_mode
     project.total_time = settings_data.settings.total_time
     project.time_per_question = settings_data.settings.time_per_question
     project.max_students = settings_data.settings.max_students
@@ -458,6 +462,7 @@ async def configure_project_settings(
             project_id=project.id,
             question_type=qt_config.type,
             count=qt_config.count,
+            time_per_question=qt_config.time_per_question,
         )
         db.add(qtc)
     
@@ -649,9 +654,13 @@ async def update_project(
     
     # Update settings if provided
     if project_data.settings:
+        project.timer_mode = project_data.settings.timer_mode
         project.total_time = project_data.settings.total_time
         project.time_per_question = project_data.settings.time_per_question
         project.max_students = project_data.settings.max_students
+        project.num_variants = project_data.settings.num_variants
+        project.test_language = project_data.settings.test_language
+        project.timer_mode = project_data.settings.timer_mode
         
         # Update question type configs
         for qtc in project.question_type_configs:
@@ -662,6 +671,7 @@ async def update_project(
                 project_id=project.id,
                 question_type=qt_config.type,
                 count=qt_config.count,
+                time_per_question=qt_config.time_per_question,
             )
             db.add(qtc)
     
@@ -810,6 +820,7 @@ async def get_project_questions(
                 "options": q.options,
                 "correctAnswer": q.correct_answer,
                 "expectedKeywords": q.expected_keywords,
+                "pairs": q.matching_pairs,  # For matching questions
                 "order": q.order,
                 "variantNumber": q.variant_number,
             }
@@ -1401,3 +1412,69 @@ async def reset_student_test_access(
         "studentEmail": student_email,
     }
 
+
+@router.post("/{project_id}/complete", response_model=ProjectResponse)
+async def complete_project(
+    project_id: UUID,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Complete/close a project. Students will no longer be able to take the test.
+    """
+    query = select(Project).where(
+        Project.id == project_id,
+        Project.teacher_id == current_user.id,
+    )
+    query = query.options(
+        selectinload(Project.question_type_configs),
+        selectinload(Project.materials),
+        selectinload(Project.questions),
+    )
+    
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+    
+    # Set status to completed
+    project.status = "completed"
+    
+    await db.commit()
+    await db.refresh(project)
+    
+    # Build response
+    question_type_configs = []
+    for qtc in project.question_type_configs:
+        question_type_configs.append({
+            "type": qtc.question_type,
+            "count": qtc.count,
+            "timePerQuestion": qtc.time_per_question,
+        })
+    
+    return ProjectResponse(
+        id=str(project.id),
+        title=project.title,
+        description=project.description,
+        groupName=project.group_name,
+        status=project.status,
+        createdAt=project.created_at,
+        startTime=project.start_time,
+        endTime=project.end_time,
+        settings=ProjectSettingsBase(
+            totalTime=project.total_time or 60,
+            timerMode=project.timer_mode or "total",
+            timePerQuestion=project.time_per_question,
+            maxStudents=project.max_students or 30,
+            numVariants=project.num_variants or 1,
+            testLanguage=project.test_language or "same",
+            questionTypes=question_type_configs,
+        ),
+        questionsCount=len(project.questions) if project.questions else 0,
+        materialsCount=len(project.materials) if project.materials else 0,
+        vectorizationStatus=project.vectorization_status,
+    )

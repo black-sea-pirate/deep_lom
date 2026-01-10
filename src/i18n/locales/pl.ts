@@ -20,6 +20,18 @@ export default {
     next: "Dalej",
     finish: "Zakończ",
     submit: "Wyślij",
+    confirm: "Potwierdź",
+    // Test review page
+    summary: "Podsumowanie",
+    student: "Student",
+    points: "Punkty",
+    answers: "Odpowiedzi",
+    studentAnswer: "Odpowiedź studenta",
+    correctAnswer: "Poprawna odpowiedź",
+    feedback: "Komentarz",
+    name: "Imię",
+    status: "Status",
+    actions: "Akcje",
   },
 
   // Navigation
@@ -77,6 +89,7 @@ export default {
     perQuestionModeHint: "Ustaw limit czasowy na każde pytanie oddzielnie",
     totalTime: "Całkowity czas",
     timePerQuestion: "Czas na pytanie",
+    timePerQuestionHint: "Skonfiguruj czas dla każdego typu pytań poniżej",
     minutes: "min",
     seconds: "sek",
     maxStudents: "Maksymalna liczba studentów",
@@ -112,6 +125,9 @@ export default {
       "Dodaj co najmniej jednego studenta przed rozpoczęciem testu",
     testStarted: "Test rozpoczęty! Wszyscy studenci mogą teraz przystąpić.",
     testStartFailed: "Nie udało się rozpocząć testu",
+    testInProgress: "Test w toku",
+    testCompleted: "Test zakończony",
+    restartTest: "Uruchom Test Ponownie",
     scheduleTest: "Zaplanuj Test",
     startTime: "Czas Rozpoczęcia",
     endTime: "Czas Zakończenia",
@@ -174,6 +190,10 @@ export default {
     nextQuestion: "Następne",
     submitTest: "Wyślij Test",
     noUpcomingTests: "Brak nadchodzących testów",
+    // Matching questions
+    matchingInstructions:
+      "Dopasuj każdy element po lewej stronie do odpowiedniego elementu po prawej",
+    selectMatch: "Wybierz dopasowanie",
     // Countdown timer
     available: "Dostępny",
     scheduled: "Zaplanowany",
@@ -182,6 +202,15 @@ export default {
     testEnded: "Test zakończony",
     availableNow: "Dostępny teraz",
     waitingForStart: "Oczekiwanie na start",
+    // Notifications / Contact requests
+    notifications: "Powiadomienia",
+    contactRequestsInfo:
+      "Tutaj wyświetlane są prośby od nauczycieli o dodanie Cię do kontaktów",
+    teacherEmail: "E-mail nauczyciela",
+    yourNameInRequest: "Twoje imię w prośbie",
+    yourEmailInRequest: "Twój e-mail w prośbie",
+    youConfirmed: "Potwierdziłeś",
+    noContactRequests: "Brak próśb o potwierdzenie",
   },
 
   // Student Account

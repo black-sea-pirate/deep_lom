@@ -174,11 +174,21 @@ export const testService = {
 
   /**
    * Start taking a test (creates test attempt)
+   * Also refreshes the access token to ensure it won't expire during the test.
    * @param projectId - Project ID
    * @returns Test instance for student
    */
   async startTest(projectId: string): Promise<Test> {
     const response = await api.post<Test>(`/student/tests/${projectId}/start`);
+
+    // Check for new access token in response header
+    const newToken = response.headers["x-new-access-token"];
+    if (newToken) {
+      // Update token in localStorage
+      localStorage.setItem("accessToken", newToken);
+      console.log("[TestService] Access token refreshed for test session");
+    }
+
     return response.data;
   },
 

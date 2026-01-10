@@ -92,6 +92,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-New-Access-Token"],  # Allow frontend to read new token header
 )
 
 # Add request logging middleware

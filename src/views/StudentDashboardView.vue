@@ -67,7 +67,18 @@ const formatCountdown = (
 ): string => {
   if (!targetTime) return "";
 
-  const target = new Date(targetTime).getTime();
+  // Ensure datetime is treated as UTC if no timezone specified
+  let timeStr =
+    typeof targetTime === "string" ? targetTime : targetTime.toISOString();
+  if (
+    !timeStr.endsWith("Z") &&
+    !timeStr.includes("+") &&
+    !timeStr.includes("-", 10)
+  ) {
+    timeStr += "Z";
+  }
+
+  const target = new Date(timeStr).getTime();
   const diff = target - currentTime.value;
 
   if (diff <= 0) {
@@ -90,7 +101,30 @@ const formatCountdown = (
   return `${minutes}m ${seconds}s`;
 };
 
+// Format UTC datetime to local date string
+const formatUtcDate = (dateStr: string | Date | null | undefined): string => {
+  if (!dateStr) return "";
+  let timeStr = typeof dateStr === "string" ? dateStr : dateStr.toISOString();
+  if (
+    !timeStr.endsWith("Z") &&
+    !timeStr.includes("+") &&
+    !timeStr.includes("-", 10)
+  ) {
+    timeStr += "Z";
+  }
+  return new Date(timeStr).toLocaleDateString();
+};
+
 const getTestCountdown = (test: UpcomingTestInfo) => {
+  // If student already completed this test
+  if (test.hasCompleted || test.status === "completed") {
+    return {
+      label: "",
+      time: t("student.testEnded") || "Test ended",
+      type: "danger" as const,
+    };
+  }
+
   if (test.status === "available") {
     // Test is available - show time remaining until end
     if (test.endTime) {
@@ -101,7 +135,7 @@ const getTestCountdown = (test: UpcomingTestInfo) => {
       };
     }
     return null;
-  } else {
+  } else if (test.status === "scheduled") {
     // Test is scheduled - show time until start
     if (test.startTime) {
       return {
@@ -112,6 +146,7 @@ const getTestCountdown = (test: UpcomingTestInfo) => {
     }
     return null;
   }
+  return null;
 };
 
 // Load data from API
@@ -388,18 +423,6 @@ const getScoreType = (score: number) => {
         <h1>{{ t("student.dashboard") }}</h1>
 
         <div class="header-right">
-          <!-- Navigation Menu -->
-          <el-menu mode="horizontal" class="nav-menu">
-            <el-menu-item index="dashboard" @click="router.push('/student')">
-              <el-icon><House /></el-icon>
-              <span>{{ t("nav.dashboard") }}</span>
-            </el-menu-item>
-            <el-menu-item index="tests" @click="openStatistics('completed')">
-              <el-icon><Document /></el-icon>
-              <span>{{ t("student.myStatistics") }}</span>
-            </el-menu-item>
-          </el-menu>
-
           <!-- Theme Toggle -->
           <ThemeToggle />
 
@@ -535,10 +558,18 @@ const getScoreType = (score: number) => {
                   <p class="group-name">{{ test.groupName }}</p>
                 </div>
                 <el-tag
-                  :type="test.status === 'available' ? 'success' : 'warning'"
+                  :type="
+                    test.hasCompleted || test.status === 'completed'
+                      ? 'info'
+                      : test.status === 'available'
+                      ? 'success'
+                      : 'warning'
+                  "
                 >
                   {{
-                    test.status === "available"
+                    test.hasCompleted || test.status === "completed"
+                      ? t("student.testEnded") || "Test ended"
+                      : test.status === "available"
                       ? t("student.available") || "Available"
                       : t("student.scheduled") || "Scheduled"
                   }}
@@ -552,9 +583,7 @@ const getScoreType = (score: number) => {
                 </div>
                 <div class="info-item" v-if="test.startTime">
                   <el-icon><Calendar /></el-icon>
-                  <span>{{
-                    new Date(test.startTime).toLocaleDateString()
-                  }}</span>
+                  <span>{{ formatUtcDate(test.startTime) }}</span>
                 </div>
               </div>
 
@@ -576,10 +605,12 @@ const getScoreType = (score: number) => {
                 size="large"
                 @click="router.push(`/student/test/${test.id}`)"
                 style="width: 100%; margin-top: 16px"
-                :disabled="test.status !== 'available'"
+                :disabled="test.status !== 'available' || test.hasCompleted"
               >
                 {{
-                  test.status === "available"
+                  test.hasCompleted || test.status === "completed"
+                    ? t("student.testEnded") || "Test ended"
+                    : test.status === "available"
                     ? t("student.takeTest")
                     : t("student.waitingForStart") || "Waiting for start"
                 }}
@@ -1098,6 +1129,10 @@ const getScoreType = (score: number) => {
 
       &.success {
         color: #67c23a;
+      }
+
+      &.danger {
+        color: #f56c6c;
       }
     }
   }

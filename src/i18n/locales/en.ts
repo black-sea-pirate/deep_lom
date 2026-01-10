@@ -23,6 +23,15 @@ export default {
     next: "Next",
     finish: "Finish",
     submit: "Submit",
+    confirm: "Confirm",
+    // Test review page
+    summary: "Summary",
+    student: "Student",
+    points: "Points",
+    answers: "Answers",
+    studentAnswer: "Student's Answer",
+    correctAnswer: "Correct Answer",
+    feedback: "Feedback",
   },
 
   // Navigation
@@ -80,6 +89,7 @@ export default {
     perQuestionModeHint: "Set time limit for each question individually",
     totalTime: "Total Time",
     timePerQuestion: "Time Per Question",
+    timePerQuestionHint: "Configure time for each question type below",
     minutes: "min",
     seconds: "sec",
     maxStudents: "Maximum Students",
@@ -117,6 +127,9 @@ export default {
     addStudentFirst: "Add at least one student before starting the test",
     testStarted: "Test started! All students can now begin.",
     testStartFailed: "Failed to start test",
+    testInProgress: "Test in Progress",
+    testCompleted: "Test Completed",
+    restartTest: "Restart Test",
     scheduleTest: "Schedule Test",
     startTime: "Start Time",
     endTime: "End Time",
@@ -210,6 +223,10 @@ export default {
     nextQuestion: "Next",
     submitTest: "Submit Test",
     noUpcomingTests: "No upcoming tests",
+    // Matching questions
+    matchingInstructions:
+      "Match each item on the left with the correct item on the right",
+    selectMatch: "Select match",
     // Countdown timer
     available: "Available",
     scheduled: "Scheduled",
@@ -218,6 +235,15 @@ export default {
     testEnded: "Test ended",
     availableNow: "Available now",
     waitingForStart: "Waiting for start",
+    // Notifications / Contact requests
+    notifications: "Notifications",
+    contactRequestsInfo:
+      "Here you can see contact requests from teachers to add you to their contacts",
+    teacherEmail: "Teacher Email",
+    yourNameInRequest: "Your name in request",
+    yourEmailInRequest: "Your email in request",
+    youConfirmed: "You confirmed",
+    noContactRequests: "No contact requests",
   },
 
   // Student Account

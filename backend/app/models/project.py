@@ -136,9 +136,11 @@ class QuestionTypeConfig(Base):
     # Question type: single-choice, multiple-choice, true-false, short-answer, essay, matching
     question_type: Mapped[str] = mapped_column(String(50), nullable=False)
     count: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    # Time per question in seconds for this question type (used when timer_mode='per_question')
+    time_per_question: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
     
     # Relationship
     project = relationship("Project", back_populates="question_type_configs")
     
     def __repr__(self) -> str:
-        return f"<QuestionTypeConfig {self.question_type}: {self.count}>"
+        return f"<QuestionTypeConfig {self.question_type}: {self.count}, {self.time_per_question}s>"

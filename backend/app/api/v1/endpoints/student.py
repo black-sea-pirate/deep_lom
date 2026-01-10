@@ -9,6 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
+from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_db, get_current_student
 from app.core.security import verify_password, get_password_hash
@@ -341,7 +342,7 @@ async def get_upcoming_tests(
         if not is_allowed:
             continue
         
-        # Check if student hasn't completed this project yet
+        # Check if student has already completed this test
         existing_test = await db.execute(
             select(Test).where(
                 Test.project_id == project.id,
@@ -349,21 +350,31 @@ async def get_upcoming_tests(
                 Test.status == "completed",
             )
         )
-        if existing_test.scalar_one_or_none():
-            continue
+        has_completed = existing_test.scalar_one_or_none() is not None
         
         # Determine test status for display
         # "available" - student can start the test now
         # "scheduled" - test is scheduled but not yet available
+        # "completed" - student already completed this test
         test_status = "scheduled"
         
-        if project.status == "active":
-            # Teacher manually activated - test is available
-            test_status = "available"
+        if has_completed:
+            # Student already passed this test - show as completed
+            test_status = "completed"
+        elif project.status == "active":
+            # Teacher manually activated - check if end_time passed
+            if project.end_time and project.end_time <= now:
+                test_status = "completed"  # Time window closed
+            else:
+                test_status = "available"
         elif project.status == "ready":
             # Scheduled test - check if start time has passed
             if project.start_time and project.start_time <= now:
-                test_status = "available"
+                # Check if end_time passed
+                if project.end_time and project.end_time <= now:
+                    test_status = "completed"  # Time window closed
+                else:
+                    test_status = "available"
             elif not project.start_time:
                 # No start_time set but status is ready - this shouldn't happen normally
                 # but treat as scheduled (waiting for teacher to activate)
@@ -379,6 +390,7 @@ async def get_upcoming_tests(
                 endTime=project.end_time,
                 duration=project.total_time or 60,
                 status=test_status,
+                hasCompleted=has_completed,
             )
         )
     
@@ -399,11 +411,14 @@ async def start_test_for_student(
     Assigns a random variant if multiple variants exist.
     """
     from app.models.test import Question
+    from app.models.project import QuestionTypeConfig
     import hashlib
     
-    # Get the project
+    # Get the project with question type configs
     project_result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(Project.id == project_id).options(
+            selectinload(Project.question_type_configs)
+        )
     )
     project = project_result.scalar_one_or_none()
     
@@ -495,9 +510,13 @@ async def start_test_for_student(
                 "startedAt": existing.started_at,
                 "maxScore": existing.max_score,
                 "variantNumber": existing.variant_number,
-                "timerMode": project.timer_mode or "total",  # 'total' or 'per_question'
-                "totalTime": project.total_time or 60,  # minutes (used when timerMode='total')
-                "timePerQuestion": project.time_per_question or 60,  # seconds (used when timerMode='per_question')
+                "timerMode": project.timer_mode or "total",
+                "totalTime": project.total_time or 60,
+                "timePerQuestion": project.time_per_question or 60,
+                "questionTypeTimes": [
+                    {"type": qtc.question_type, "timePerQuestion": qtc.time_per_question}
+                    for qtc in (project.question_type_configs or [])
+                ],
                 "questions": [
                     {
                         "id": str(q.id),
@@ -574,9 +593,13 @@ async def start_test_for_student(
         "startedAt": new_test.started_at,
         "maxScore": max_score,
         "variantNumber": assigned_variant,
-        "timerMode": project.timer_mode or "total",  # 'total' or 'per_question'
-        "totalTime": project.total_time or 60,  # minutes (used when timerMode='total')
-        "timePerQuestion": project.time_per_question or 60,  # seconds (used when timerMode='per_question')
+        "timerMode": project.timer_mode or "total",
+        "totalTime": project.total_time or 60,
+        "timePerQuestion": project.time_per_question or 60,
+        "questionTypeTimes": [
+            {"type": qtc.question_type, "timePerQuestion": qtc.time_per_question}
+            for qtc in (project.question_type_configs or [])
+        ],
         "questions": [
             {
                 "id": str(q.id),

@@ -7,14 +7,15 @@ Test generation, submission, and results.
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.core.deps import get_db, get_current_teacher, get_current_student, get_current_user
+from app.core.security import create_access_token
 from app.models.user import User
-from app.models.project import Project
+from app.models.project import Project, QuestionTypeConfig
 from app.models.material import Material
 from app.models.test import Test, Question, Answer
 from app.schemas.test import (
@@ -25,6 +26,7 @@ from app.schemas.test import (
     TestListResponse,
     TestForStudent,
     QuestionForStudent,
+    QuestionTypeTimeConfig,
     QuestionResponse,
     AnswerResponse,
     TestResultResponse,
@@ -263,14 +265,18 @@ async def get_test(
 
 # ============== Student Test Taking ==============
 
-@router.post("/{test_id}/start", response_model=TestForStudent)
+@router.post("/{test_id}/start", response_model=TestForStudent, response_model_by_alias=True)
 async def start_test(
     test_id: UUID,
+    response: Response,
     current_user: User = Depends(get_current_student),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Start a test attempt for current student.
+    
+    Also refreshes the access token to ensure it won't expire during the test.
+    The new token is returned in the X-New-Access-Token header.
     """
     # Get test
     result = await db.execute(select(Test).where(Test.id == test_id))
@@ -294,6 +300,14 @@ async def start_test(
             detail="Test cannot be started",
         )
     
+    # Get project for timer settings (with question type configs)
+    project_result = await db.execute(
+        select(Project).where(Project.id == test.project_id).options(
+            selectinload(Project.question_type_configs)
+        )
+    )
+    project = project_result.scalar_one_or_none()
+    
     # Update test
     test.student_id = current_user.id
     test.status = "in-progress"
@@ -308,12 +322,31 @@ async def start_test(
     )
     questions = questions_result.scalars().all()
     
+    # Build question type times list
+    question_type_times = []
+    if project and project.question_type_configs:
+        question_type_times = [
+            QuestionTypeTimeConfig(
+                type=qtc.question_type,
+                timePerQuestion=qtc.time_per_question,
+            )
+            for qtc in project.question_type_configs
+        ]
+    
+    # Generate new access token to ensure it won't expire during the test
+    new_access_token = create_access_token(subject=str(current_user.id))
+    response.headers["X-New-Access-Token"] = new_access_token
+    
     return TestForStudent(
         id=test.id,
         projectId=test.project_id,
         status=test.status,
         maxScore=test.max_score,
         startedAt=test.started_at,
+        timerMode=project.timer_mode if project else "total",
+        totalTime=project.total_time if project else 60,
+        timePerQuestion=project.time_per_question if project else 60,
+        questionTypeTimes=question_type_times,
         questions=[
             QuestionForStudent(
                 id=q.id,

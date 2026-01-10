@@ -33,6 +33,7 @@ interface Question {
   options?: string[];
   correctAnswer?: number | number[] | string | string[] | boolean;
   expectedKeywords?: string[];
+  pairs?: { left: string; right: string }[]; // For matching questions
   order: number;
   variantNumber?: number;
 }
@@ -445,6 +446,22 @@ const goBack = () => {
               {{ keyword }}
             </el-tag>
           </div>
+
+          <!-- Matching pairs -->
+          <div v-if="question.pairs?.length" class="matching-pairs">
+            <div class="pairs-label">Matching pairs:</div>
+            <div class="pairs-list">
+              <div
+                v-for="(pair, pairIndex) in question.pairs"
+                :key="pairIndex"
+                class="pair-item"
+              >
+                <span class="pair-left">{{ pair.left }}</span>
+                <span class="pair-arrow">→</span>
+                <span class="pair-right">{{ pair.right }}</span>
+              </div>
+            </div>
+          </div>
         </el-card>
       </div>
     </div>
@@ -723,6 +740,48 @@ const goBack = () => {
     .keywords-label {
       font-size: 0.9rem;
       color: var(--color-text-light);
+    }
+  }
+
+  .matching-pairs {
+    margin-top: var(--spacing-md);
+
+    .pairs-label {
+      font-size: 0.9rem;
+      color: var(--color-text-light);
+      margin-bottom: var(--spacing-sm);
+    }
+
+    .pairs-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-xs);
+    }
+
+    .pair-item {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-sm);
+      padding: var(--spacing-sm) var(--spacing-md);
+      background: var(--color-surface);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+    }
+
+    .pair-left {
+      flex: 1;
+      font-weight: 500;
+      color: var(--color-dark);
+    }
+
+    .pair-arrow {
+      color: var(--color-text-light);
+      font-size: 1.1rem;
+    }
+
+    .pair-right {
+      flex: 1;
+      color: var(--color-success);
     }
   }
 }

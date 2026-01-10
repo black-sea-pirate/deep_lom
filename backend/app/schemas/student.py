@@ -68,7 +68,8 @@ class UpcomingTestInfo(BaseModel):
     start_time: Optional[datetime] = Field(None, alias="startTime")
     end_time: Optional[datetime] = Field(None, alias="endTime")
     duration: int
-    status: str  # "scheduled", "available", "started"
+    status: str  # "scheduled", "available", "completed" (student completed)
+    has_completed: bool = Field(False, alias="hasCompleted")  # Student already completed this test
     
     class Config:
         populate_by_name = True

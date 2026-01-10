@@ -175,6 +175,17 @@ class TestListResponse(BaseModel):
 
 # ============== Student Test Schemas (for taking tests) ==============
 
+class QuestionTypeTimeConfig(BaseModel):
+    """Time config for each question type"""
+    question_type: str = Field(alias="type")
+    time_per_question: int = Field(alias="timePerQuestion")  # seconds
+    
+    model_config = {
+        "populate_by_name": True,
+        "serialize_by_alias": True,  # ВАЖНО: сериализовать с aliases для JSON
+    }
+
+
 class TestForStudent(BaseModel):
     """Test schema for students (without correct answers)"""
     id: UUID
@@ -183,9 +194,17 @@ class TestForStudent(BaseModel):
     max_score: float = Field(alias="maxScore")
     started_at: Optional[datetime] = Field(None, alias="startedAt")
     questions: List["QuestionForStudent"]
+    # Timer settings from project
+    timer_mode: str = Field(default="total", alias="timerMode")  # 'total' or 'per_question'
+    total_time: int = Field(default=60, alias="totalTime")  # minutes
+    time_per_question: int = Field(default=60, alias="timePerQuestion")  # seconds (legacy default)
+    # Time per question type (for per_question mode)
+    question_type_times: List[QuestionTypeTimeConfig] = Field(default=[], alias="questionTypeTimes")
     
-    class Config:
-        populate_by_name = True
+    model_config = {
+        "populate_by_name": True,
+        "serialize_by_alias": True,
+    }
 
 
 class QuestionForStudent(BaseModel):
@@ -197,8 +216,10 @@ class QuestionForStudent(BaseModel):
     options: Optional[List[str]] = None
     # Note: correct answers are NOT included
     
-    class Config:
-        populate_by_name = True
+    model_config = {
+        "populate_by_name": True,
+        "serialize_by_alias": True,
+    }
 
 
 # ============== Results Schemas ==============
