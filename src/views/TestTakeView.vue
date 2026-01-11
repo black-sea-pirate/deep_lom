@@ -328,9 +328,15 @@ const handleSubmitTest = async () => {
 }
 
 .test-header {
-  background: white;
+  background: var(--color-background);
   box-shadow: var(--shadow-sm);
   padding: var(--spacing-lg);
+
+  .el-progress {
+    :deep(.el-progress-bar__outer) {
+      background-color: var(--color-border);
+    }
+  }
 
   .header-info {
     display: flex;
@@ -340,7 +346,7 @@ const handleSubmitTest = async () => {
 
     h2 {
       margin: 0;
-      color: var(--color-dark);
+      color: var(--color-text);
     }
 
     p {
@@ -370,7 +376,7 @@ const handleSubmitTest = async () => {
 
   .question-text {
     font-size: 1.3rem;
-    color: var(--color-dark);
+    color: var(--color-text);
     margin-bottom: var(--spacing-md);
     line-height: 1.6;
   }
@@ -429,7 +435,7 @@ const handleSubmitTest = async () => {
       }
 
       .matching-term {
-        color: var(--color-dark);
+        color: var(--color-text);
       }
     }
 

@@ -39,19 +39,36 @@ async def lookup_student_by_email(
     """
     Lookup student by email to auto-fill name fields.
     Returns student info if found in users table.
+    Searches both primary email (users.email) and additional emails (student_emails).
     """
+    normalized_email = email.lower().strip()
+    
+    # First, try to find by primary email in users table
     result = await db.execute(
         select(User).where(
-            User.email == email.lower(),
+            User.email == normalized_email,
             User.role == "student",
         )
     )
     user = result.scalar_one_or_none()
     
+    # If not found, search in student_emails table (additional emails)
+    if not user:
+        from app.models.student_email import StudentEmail
+        result = await db.execute(
+            select(User)
+            .join(StudentEmail, StudentEmail.user_id == User.id)
+            .where(
+                StudentEmail.email == normalized_email,
+                User.role == "student",
+            )
+        )
+        user = result.scalar_one_or_none()
+    
     if user:
         return StudentLookupResponse(
             found=True,
-            email=user.email,
+            email=normalized_email,  # Return the email that was searched
             firstName=user.first_name,
             lastName=user.last_name,
             userId=user.id,
@@ -59,7 +76,7 @@ async def lookup_student_by_email(
     
     return StudentLookupResponse(
         found=False,
-        email=email,
+        email=normalized_email,
         firstName=None,
         lastName=None,
         userId=None,
@@ -152,16 +169,37 @@ async def create_participant(
     first_name = participant_data.first_name
     last_name = participant_data.last_name
     student_user_id = None
+    normalized_email = participant_data.email.lower().strip()
     
-    # Auto-fill from database if requested
-    if participant_data.auto_fill:
-        user_result = await db.execute(
+    # Helper function to find student by primary or secondary email
+    async def find_student_by_email(email: str) -> User | None:
+        # First, try primary email
+        result = await db.execute(
             select(User).where(
-                User.email == participant_data.email.lower(),
+                User.email == email,
                 User.role == "student",
             )
         )
-        student_user = user_result.scalar_one_or_none()
+        user = result.scalar_one_or_none()
+        
+        # If not found, search in student_emails (secondary emails)
+        if not user:
+            from app.models.student_email import StudentEmail
+            result = await db.execute(
+                select(User)
+                .join(StudentEmail, StudentEmail.user_id == User.id)
+                .where(
+                    StudentEmail.email == email,
+                    User.role == "student",
+                )
+            )
+            user = result.scalar_one_or_none()
+        
+        return user
+    
+    # Auto-fill from database if requested
+    if participant_data.auto_fill:
+        student_user = await find_student_by_email(normalized_email)
         
         if student_user:
             first_name = student_user.first_name
@@ -174,20 +212,14 @@ async def create_participant(
             )
     else:
         # Try to find student user anyway (for linking)
-        user_result = await db.execute(
-            select(User).where(
-                User.email == participant_data.email.lower(),
-                User.role == "student",
-            )
-        )
-        student_user = user_result.scalar_one_or_none()
+        student_user = await find_student_by_email(normalized_email)
         if student_user:
             student_user_id = student_user.id
     
     participant = Participant(
         teacher_id=current_user.id,
         student_user_id=student_user_id,
-        email=participant_data.email.lower(),
+        email=normalized_email,
         first_name=first_name,
         last_name=last_name,
         participant_type=participant_data.participant_type,

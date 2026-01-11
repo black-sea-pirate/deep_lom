@@ -24,6 +24,10 @@ export default {
     finish: "Finish",
     submit: "Submit",
     confirm: "Confirm",
+    reject: "Reject",
+    selected: "Selected",
+    yesterday: "Yesterday",
+    daysAgo: "days ago",
     // Test review page
     summary: "Summary",
     student: "Student",
@@ -160,7 +164,7 @@ export default {
     timeTaken: "Time",
     grading: "Grading",
     viewAnswers: "View Answers",
-    resetAccess: "Reset Access (allow retry)",
+    downloadPDF: "Download PDF",
     deleteResults: "Delete Results",
     notStartedYet: "Not started yet",
     noResultsYet: "No test results yet",
@@ -173,11 +177,10 @@ export default {
       "Are you sure you want to delete all test results for",
     confirmDeleteWarning:
       "This action cannot be undone. All test data will be permanently removed.",
-    confirmResetAccess: "Are you sure you want to reset test access for",
-    confirmResetWarning:
-      "This will delete any incomplete test attempt, allowing the student to start fresh.",
+    generatingPDF: "Generating PDF...",
+    pdfDownloaded: "PDF downloaded successfully",
+    pdfError: "Failed to generate PDF",
     deleteSuccess: "Test results deleted successfully",
-    resetSuccess: "Test access reset successfully",
     studentAnswers: "Student Answers",
   },
 
@@ -244,6 +247,7 @@ export default {
     yourEmailInRequest: "Your email in request",
     youConfirmed: "You confirmed",
     noContactRequests: "No contact requests",
+    requestConfirmed: "Request confirmed",
   },
 
   // Student Account
@@ -521,6 +525,7 @@ export default {
     confirmed: "Confirmed",
     pending: "Pending",
     rejected: "Rejected",
+    studentFound: "Found",
     studentFoundInDb: "Student found in database",
     studentNotFoundInDb: "Student not found in database. Enter name manually.",
     loadError: "Failed to load students",

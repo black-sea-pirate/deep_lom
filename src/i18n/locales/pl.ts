@@ -21,6 +21,10 @@ export default {
     finish: "Zakończ",
     submit: "Wyślij",
     confirm: "Potwierdź",
+    reject: "Odrzuć",
+    selected: "Wybrane",
+    yesterday: "Wczoraj",
+    daysAgo: "dni temu",
     // Test review page
     summary: "Podsumowanie",
     student: "Student",
@@ -211,6 +215,7 @@ export default {
     yourEmailInRequest: "Twój e-mail w prośbie",
     youConfirmed: "Potwierdziłeś",
     noContactRequests: "Brak próśb o potwierdzenie",
+    requestConfirmed: "Prośba potwierdzona",
   },
 
   // Student Account
@@ -487,6 +492,7 @@ export default {
     confirmed: "Potwierdzony",
     pending: "Oczekujący",
     rejected: "Odrzucony",
+    studentFound: "Znaleziono",
     studentFoundInDb: "Znaleziono studenta w bazie danych",
     studentNotFoundInDb:
       "Nie znaleziono studenta w bazie danych. Wprowadź imię ręcznie.",

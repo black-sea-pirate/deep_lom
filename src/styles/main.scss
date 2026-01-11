@@ -742,12 +742,6 @@ p {
       }
     }
   }
-
-  /* Tooltip */
-  .el-tooltip__popper {
-    background-color: #374151 !important;
-    color: #f9fafb;
-  }
 }
 
 /* Element Plus popups/overlays that render at body level need special treatment */
@@ -755,7 +749,7 @@ p {
 html.dark {
   .el-select__popper,
   .el-select-dropdown,
-  .el-popper {
+  .el-popper:not(.el-tooltip__popper) {
     background-color: #1f2937 !important;
     border-color: #374151 !important;
   }
@@ -821,8 +815,20 @@ html.dark {
     border-color: #374151 !important;
   }
 
-  .el-tooltip__popper.is-dark {
-    background-color: #374151 !important;
+  /* Tooltip styles for dark theme */
+  .el-tooltip__popper,
+  .el-popper.is-dark,
+  .el-popper[data-popper-placement] {
+    background: #f3f4f6 !important;
+    color: #1f2937 !important;
+    border: 1px solid #d1d5db !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .el-tooltip__popper .el-popper__arrow::before,
+  .el-popper.is-dark .el-popper__arrow::before {
+    background: #f3f4f6 !important;
+    border-color: #d1d5db !important;
   }
 
   /* Ensure overlay/mask is properly dark */

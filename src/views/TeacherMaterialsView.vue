@@ -24,7 +24,6 @@ import {
   Picture,
   Delete,
   Download,
-  View,
   FolderOpened,
   Folder,
   FolderAdd,
@@ -317,6 +316,7 @@ const beforeUpload: UploadProps["beforeUpload"] = (rawFile) => {
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "text/plain",
     "image/png",
     "image/jpeg",
@@ -410,14 +410,6 @@ const handleDelete = async (material: Material) => {
 };
 
 /**
- * Handle material preview
- */
-const handlePreview = (material: Material) => {
-  const previewUrl = materialService.getPreviewUrl(material.id);
-  window.open(previewUrl, "_blank");
-};
-
-/**
  * Handle material download
  */
 const handleDownload = async (material: Material) => {
@@ -479,7 +471,7 @@ const handleLogout = () => {
               :show-file-list="false"
               :before-upload="beforeUpload"
               :http-request="handleUpload"
-              accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
+              accept=".pdf,.doc,.docx,.txt,.pptx,.png,.jpg,.jpeg"
               :disabled="uploading"
             >
               <div class="upload-content" v-if="!uploading">
@@ -657,21 +649,11 @@ const handleLogout = () => {
               <!-- Actions -->
               <el-table-column
                 :label="t('materialsPage.actions')"
-                width="250"
+                width="200"
                 align="right"
               >
                 <template #default="{ row }">
                   <el-button-group>
-                    <el-tooltip
-                      :content="t('materialsPage.preview')"
-                      placement="top"
-                    >
-                      <el-button
-                        size="small"
-                        :icon="View"
-                        @click="handlePreview(row)"
-                      />
-                    </el-tooltip>
                     <el-tooltip
                       :content="t('materialsPage.download')"
                       placement="top"

@@ -24,6 +24,10 @@ export default {
     finish: "Завершить",
     submit: "Отправить",
     confirm: "Подтвердить",
+    reject: "Отклонить",
+    selected: "Выбрано",
+    yesterday: "Вчера",
+    daysAgo: "дней назад",
     // Test review page
     summary: "Итоги",
     student: "Студент",
@@ -159,7 +163,7 @@ export default {
     timeTaken: "Время",
     grading: "Проверка",
     viewAnswers: "Просмотреть ответы",
-    resetAccess: "Сбросить доступ (разрешить повторную попытку)",
+    downloadPDF: "Скачать PDF",
     deleteResults: "Удалить результаты",
     notStartedYet: "Ещё не начал",
     noResultsYet: "Результатов пока нет",
@@ -172,11 +176,10 @@ export default {
       "Вы уверены, что хотите удалить все результаты тестирования для",
     confirmDeleteWarning:
       "Это действие нельзя отменить. Все данные теста будут удалены безвозвратно.",
-    confirmResetAccess: "Вы уверены, что хотите сбросить доступ к тесту для",
-    confirmResetWarning:
-      "Это удалит любую незавершённую попытку теста, позволяя студенту начать заново.",
+    generatingPDF: "Генерация PDF...",
+    pdfDownloaded: "PDF успешно скачан",
+    pdfError: "Не удалось сгенерировать PDF",
     deleteSuccess: "Результаты теста успешно удалены",
-    resetSuccess: "Доступ к тесту успешно сброшен",
     studentAnswers: "Ответы студента",
   },
 
@@ -243,6 +246,7 @@ export default {
     yourEmailInRequest: "Ваш email в запросе",
     youConfirmed: "Вы подтвердили",
     noContactRequests: "Нет запросов на подтверждение",
+    requestConfirmed: "Запрос подтверждён",
   },
 
   // Student Account
@@ -499,6 +503,7 @@ export default {
     confirmed: "Подтверждён",
     pending: "Ожидает",
     rejected: "Отклонён",
+    studentFound: "Найден",
     studentFoundInDb: "Студент найден в базе данных",
     studentNotFoundInDb:
       "Студент не найден в базе данных. Введите имя вручную.",

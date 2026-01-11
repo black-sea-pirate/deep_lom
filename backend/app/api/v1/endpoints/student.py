@@ -580,6 +580,7 @@ async def start_test_for_student(
         max_score=max_score,
         score=0,
         variant_number=assigned_variant,
+        participant_email=matched_email,  # Save the email teacher knows
     )
     
     db.add(new_test)

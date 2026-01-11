@@ -48,6 +48,10 @@ class Test(Base):
     # Which variant of test this student received
     variant_number: Mapped[int] = mapped_column(Integer, default=1)
     
+    # Email that teacher knows (participant email, not student's primary email)
+    # This is the email from project.allowed_students that matched
+    participant_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    
     # Scoring
     score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     max_score: Mapped[float] = mapped_column(Float, default=100.0)

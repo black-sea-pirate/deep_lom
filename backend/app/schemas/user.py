@@ -8,16 +8,18 @@ Compatible with frontend TypeScript types.
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 # ============== Base Schemas ==============
 
 class UserBase(BaseModel):
     """Base user schema with common fields"""
+    model_config = ConfigDict(populate_by_name=True)
+    
     email: EmailStr
-    first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
+    first_name: str = Field(..., min_length=1, max_length=100, alias="firstName")
+    last_name: str = Field(..., min_length=1, max_length=100, alias="lastName")
     role: str = Field(default="student", pattern="^(teacher|student)$")
 
 
@@ -36,8 +38,10 @@ class UserLogin(BaseModel):
 
 class UserUpdate(BaseModel):
     """Schema for updating user profile"""
-    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    model_config = ConfigDict(populate_by_name=True)
+    
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100, alias="firstName")
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100, alias="lastName")
 
 
 class PasswordChange(BaseModel):

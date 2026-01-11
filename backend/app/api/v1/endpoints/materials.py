@@ -108,7 +108,7 @@ async def upload_material(
     Files are stored in their original format and can later be
     linked to projects during project creation.
     
-    Accepts: PDF, DOCX, DOC, TXT, PNG, JPG, JPEG
+    Accepts: PDF, DOCX, DOC, TXT, PPTX, PNG, JPG, JPEG
     Max size: 50MB
     """
     # Validate file extension
@@ -207,6 +207,120 @@ async def delete_material(
     await db.commit()
     
     return MessageResponse(message="Material deleted successfully")
+
+
+@router.get("/{material_id}/download")
+async def download_material(
+    material_id: UUID,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Download material file.
+    """
+    from fastapi.responses import FileResponse
+    
+    query = select(Material).where(
+        Material.id == material_id,
+        Material.teacher_id == current_user.id,
+    )
+    
+    result = await db.execute(query)
+    material = result.scalar_one_or_none()
+    
+    if not material:
+        raise NotFoundException(resource="Material", resource_id=str(material_id))
+    
+    file_path = os.path.join(settings.UPLOAD_DIR, "materials", material.file_name)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk",
+        )
+    
+    return FileResponse(
+        path=file_path,
+        filename=material.original_name,
+        media_type="application/octet-stream",
+    )
+
+
+@router.get("/{material_id}/preview")
+async def preview_material(
+    material_id: UUID,
+    token: str = Query(None, description="JWT token for authentication"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Preview material file (for PDFs, images).
+    Accepts token as query parameter for direct browser access.
+    """
+    from fastapi.responses import FileResponse
+    from app.core.security import verify_token
+    
+    # Verify token
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token required",
+        )
+    
+    try:
+        payload = verify_token(token)
+        user_id = payload.sub if payload else None
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+    
+    query = select(Material).where(
+        Material.id == material_id,
+        Material.teacher_id == user_id,
+    )
+    
+    result = await db.execute(query)
+    material = result.scalar_one_or_none()
+    
+    if not material:
+        raise NotFoundException(resource="Material", resource_id=str(material_id))
+    
+    file_path = os.path.join(settings.UPLOAD_DIR, "materials", material.file_name)
+    
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="File not found on disk",
+        )
+    
+    # Determine media type
+    media_type_map = {
+        "pdf": "application/pdf",
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "gif": "image/gif",
+        "txt": "text/plain",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "ppt": "application/vnd.ms-powerpoint",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }
+    
+    ext = material.file_type.lower() if material.file_type else ""
+    media_type = media_type_map.get(ext, "application/octet-stream")
+    
+    return FileResponse(
+        path=file_path,
+        filename=material.original_name,
+        media_type=media_type,
+    )
 
 
 @router.patch("/{material_id}", response_model=MaterialResponse)

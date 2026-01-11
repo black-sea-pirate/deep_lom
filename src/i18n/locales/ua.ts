@@ -21,6 +21,10 @@ export default {
     finish: "Завершити",
     submit: "Відправити",
     confirm: "Підтвердити",
+    reject: "Відхилити",
+    selected: "Вибрано",
+    yesterday: "Вчора",
+    daysAgo: "днів тому",
     // Test review page
     summary: "Підсумки",
     student: "Студент",
@@ -157,7 +161,7 @@ export default {
     timeTaken: "Час",
     grading: "Перевірка",
     viewAnswers: "Переглянути відповіді",
-    resetAccess: "Скинути доступ (дозволити повторну спробу)",
+    downloadPDF: "Завантажити PDF",
     deleteResults: "Видалити результати",
     notStartedYet: "Ще не розпочав",
     noResultsYet: "Результатів поки немає",
@@ -170,11 +174,10 @@ export default {
       "Ви впевнені, що хочете видалити всі результати тестування для",
     confirmDeleteWarning:
       "Цю дію не можна скасувати. Всі дані тесту будуть видалені назавжди.",
-    confirmResetAccess: "Ви впевнені, що хочете скинути доступ до тесту для",
-    confirmResetWarning:
-      "Це видалить будь-яку незавершену спробу тесту, дозволяючи студенту почати заново.",
+    generatingPDF: "Генерація PDF...",
+    pdfDownloaded: "PDF успішно завантажено",
+    pdfError: "Не вдалося згенерувати PDF",
     deleteSuccess: "Результати тесту успішно видалено",
-    resetSuccess: "Доступ до тесту успішно скинуто",
     studentAnswers: "Відповіді студента",
   },
 
@@ -241,6 +244,7 @@ export default {
     yourEmailInRequest: "Ваш email в запиті",
     youConfirmed: "Ви підтвердили",
     noContactRequests: "Немає запитів на підтвердження",
+    requestConfirmed: "Запит підтверджено",
   },
 
   // Student Account
@@ -497,6 +501,7 @@ export default {
     confirmed: "Підтверджено",
     pending: "Очікує",
     rejected: "Відхилено",
+    studentFound: "Знайдено",
     studentFoundInDb: "Студента знайдено в базі даних",
     studentNotFoundInDb:
       "Студента не знайдено в базі даних. Введіть ім'я вручну.",

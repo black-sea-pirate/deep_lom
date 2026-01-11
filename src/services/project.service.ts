@@ -368,26 +368,6 @@ export const projectService = {
     );
     return response.data;
   },
-
-  /**
-   * Reset student test access (for technical issues)
-   * @param projectId - Project ID
-   * @param studentEmail - Student email
-   * @returns Reset confirmation
-   */
-  async resetStudentTestAccess(
-    projectId: string,
-    studentEmail: string
-  ): Promise<{ message: string; resetCount: number; studentEmail: string }> {
-    const response = await api.post<{
-      message: string;
-      resetCount: number;
-      studentEmail: string;
-    }>(
-      `/projects/${projectId}/reset-student/${encodeURIComponent(studentEmail)}`
-    );
-    return response.data;
-  },
 };
 
 /**

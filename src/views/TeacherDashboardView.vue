@@ -95,15 +95,15 @@ const handleLogout = () => {
                 <div class="project-stats">
                   <el-statistic
                     :title="t('teacher.studentCount')"
-                    :value="project.settings.maxStudents"
+                    :value="project.settings?.maxStudents || 0"
                   />
                   <el-statistic
                     title="Questions"
                     :value="
-                      project.settings.questionTypes.reduce(
+                      project.settings?.questionTypes?.reduce(
                         (sum, q) => sum + q.count,
                         0
-                      )
+                      ) || 0
                     "
                   />
                 </div>

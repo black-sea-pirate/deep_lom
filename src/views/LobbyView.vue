@@ -11,7 +11,7 @@ import {
   User,
   View,
   Delete,
-  RefreshRight,
+  Download,
 } from "@element-plus/icons-vue";
 import {
   projectService,
@@ -22,6 +22,8 @@ import {
   participantService,
   type Participant,
 } from "@/services/participant.service";
+import html2pdf from "html2pdf.js";
+import api from "@/services/api";
 
 const route = useRoute();
 const router = useRouter();
@@ -249,32 +251,319 @@ const handleDeleteResults = async (email: string, name: string) => {
   }
 };
 
-// Reset student test access
-const handleResetAccess = async (email: string, name: string) => {
+// Download student test results as PDF
+const handleDownloadPDF = async (testId: string, studentName: string) => {
   try {
-    await ElMessageBox.confirm(
-      t("lobby.confirmResetAccess", { name }) ||
-        `Reset test access for ${name}? This will delete their incomplete test and allow them to start fresh.`,
-      t("common.confirm") || "Confirm",
-      {
-        confirmButtonText: t("lobby.reset") || "Reset",
-        cancelButtonText: t("common.cancel") || "Cancel",
-        type: "warning",
-      }
-    );
+    ElMessage.info(t("lobby.generatingPDF") || "Generating PDF...");
 
-    const result = await projectService.resetStudentTestAccess(
-      projectId,
-      email
+    // Fetch test details from API
+    const response = await api.get(`/tests/${testId}/details`);
+    const testData = response.data;
+    const answers = testData.answers || [];
+
+    // Calculate totals
+    const totalScore = answers.reduce(
+      (sum: number, a: any) => sum + (a.score || 0),
+      0
     );
-    ElMessage.success(result.message);
-    await loadTestResults();
+    const maxScore = answers.reduce(
+      (sum: number, a: any) => sum + a.maxScore,
+      0
+    );
+    const scorePercent =
+      maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+
+    // Get test language from project settings
+    const testLang = (project.value as any)?.testLanguage || "en";
+
+    // PDF translations for different languages
+    const pdfTranslations: Record<string, Record<string, string>> = {
+      en: {
+        title: "Test Results",
+        project: "Project",
+        student: "Student",
+        date: "Date",
+        score: "Score",
+        status: "Status",
+        answers: "Answers",
+        studentAnswer: "Student Answer",
+        correctAnswer: "Correct Answer",
+        correct: "Correct",
+        incorrect: "Incorrect",
+        pending: "Pending",
+        gradedBy: "Graded by",
+        aiFeedback: "AI Feedback",
+      },
+      ru: {
+        title: "Результаты теста",
+        project: "Проект",
+        student: "Студент",
+        date: "Дата",
+        score: "Результат",
+        status: "Статус",
+        answers: "Ответы",
+        studentAnswer: "Ответ студента",
+        correctAnswer: "Правильный ответ",
+        correct: "Правильно",
+        incorrect: "Неправильно",
+        pending: "Ожидание",
+        gradedBy: "Проверил",
+        aiFeedback: "Отзыв ИИ",
+      },
+      ua: {
+        title: "Результати тесту",
+        project: "Проект",
+        student: "Студент",
+        date: "Дата",
+        score: "Результат",
+        status: "Статус",
+        answers: "Відповіді",
+        studentAnswer: "Відповідь студента",
+        correctAnswer: "Правильна відповідь",
+        correct: "Правильно",
+        incorrect: "Неправильно",
+        pending: "Очікування",
+        gradedBy: "Перевірив",
+        aiFeedback: "Відгук ШІ",
+      },
+      pl: {
+        title: "Wyniki testu",
+        project: "Projekt",
+        student: "Student",
+        date: "Data",
+        score: "Wynik",
+        status: "Status",
+        answers: "Odpowiedzi",
+        studentAnswer: "Odpowiedź studenta",
+        correctAnswer: "Prawidłowa odpowiedź",
+        correct: "Prawidłowo",
+        incorrect: "Nieprawidłowo",
+        pending: "Oczekuje",
+        gradedBy: "Sprawdził",
+        aiFeedback: "Opinia AI",
+      },
+      de: {
+        title: "Testergebnisse",
+        project: "Projekt",
+        student: "Student",
+        date: "Datum",
+        score: "Ergebnis",
+        status: "Status",
+        answers: "Antworten",
+        studentAnswer: "Antwort des Studenten",
+        correctAnswer: "Richtige Antwort",
+        correct: "Richtig",
+        incorrect: "Falsch",
+        pending: "Ausstehend",
+        gradedBy: "Bewertet von",
+        aiFeedback: "KI-Feedback",
+      },
+      fr: {
+        title: "Résultats du test",
+        project: "Projet",
+        student: "Étudiant",
+        date: "Date",
+        score: "Résultat",
+        status: "Statut",
+        answers: "Réponses",
+        studentAnswer: "Réponse de l'étudiant",
+        correctAnswer: "Bonne réponse",
+        correct: "Correct",
+        incorrect: "Incorrect",
+        pending: "En attente",
+        gradedBy: "Noté par",
+        aiFeedback: "Commentaire IA",
+      },
+    };
+
+    const tr = pdfTranslations[testLang] ?? pdfTranslations.en!;
+    const en = pdfTranslations.en!;
+
+    // Helper to create bilingual text (test language / English)
+    const bilingual = (key: string): string => {
+      if (testLang === "en") return en[key] ?? key;
+      return `${tr[key] ?? key} / ${en[key] ?? key}`;
+    };
+
+    // Build HTML content for PDF
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto;">
+        <h1 style="text-align: center; color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
+          ${bilingual("title")}
+        </h1>
+        
+        <div style="margin: 20px 0; background: #f5f5f5; padding: 15px; border-radius: 8px; color: #333;">
+          <p style="margin: 5px 0; color: #333;"><strong>${bilingual(
+            "project"
+          )}:</strong> ${project.value?.title || "N/A"}</p>
+          <p style="margin: 5px 0; color: #333;"><strong>${bilingual(
+            "student"
+          )}:</strong> ${studentName}</p>
+          <p style="margin: 5px 0; color: #333;"><strong>${bilingual(
+            "date"
+          )}:</strong> ${new Date().toLocaleDateString()}</p>
+          <p style="margin: 5px 0; font-size: 18px; color: #333;">
+            <strong>${bilingual("score")}:</strong> 
+            <span style="color: ${
+              scorePercent >= 60 ? "#2e7d32" : "#c62828"
+            }; font-weight: bold;">
+              ${totalScore.toFixed(1)} / ${maxScore} (${scorePercent}%)
+            </span>
+          </p>
+          <p style="margin: 5px 0; color: #333;"><strong>${bilingual(
+            "status"
+          )}:</strong> ${testData.status}</p>
+        </div>
+
+        <h2 style="color: #333; border-bottom: 1px solid #ddd; padding-bottom: 5px;">${bilingual(
+          "answers"
+        )}:</h2>
+        
+        ${answers
+          .map(
+            (answer: any, i: number) => `
+          <div style="margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background: ${
+            answer.isCorrect
+              ? "#e8f5e9"
+              : answer.isCorrect === false
+              ? "#ffebee"
+              : "#fff3e0"
+          };">
+            <div style="font-weight: bold; color: #555; margin-bottom: 10px;">
+              ${i + 1}. [${answer.questionType}] - ${
+              answer.score?.toFixed(1) || 0
+            }/${answer.maxScore} pts
+            </div>
+            <div style="margin-bottom: 10px; color: #333;">
+              ${answer.questionText || ""}
+            </div>
+            <div style="color: ${
+              answer.isCorrect
+                ? "#2e7d32"
+                : answer.isCorrect === false
+                ? "#c62828"
+                : "#666"
+            }; margin: 5px 0;">
+              <strong>${bilingual(
+                "studentAnswer"
+              )}:</strong> ${formatAnswerForPDF(answer, "student")}
+            </div>
+            ${
+              answer.questionType !== "essay"
+                ? `<div style="color: #1565c0; margin: 5px 0;">
+                <strong>${bilingual(
+                  "correctAnswer"
+                )}:</strong> ${formatAnswerForPDF(answer, "correct")}
+              </div>`
+                : ""
+            }
+            <div style="font-weight: bold; color: ${
+              answer.isCorrect
+                ? "#2e7d32"
+                : answer.isCorrect === false
+                ? "#c62828"
+                : "#ff9800"
+            };">
+              ${
+                answer.isCorrect
+                  ? `✓ ${bilingual("correct")}`
+                  : answer.isCorrect === false
+                  ? `✗ ${bilingual("incorrect")}`
+                  : `⏳ ${bilingual("pending")}`
+              }
+            </div>
+            ${
+              answer.feedback
+                ? `<div style="margin-top: 10px; padding: 10px; background: #e3f2fd; border-radius: 4px; font-style: italic; color: #333;">
+                <strong>${bilingual("aiFeedback")}:</strong> ${answer.feedback}
+              </div>`
+                : ""
+            }
+            ${
+              answer.gradedBy
+                ? `<div style="margin-top: 5px; font-size: 12px; color: #666;">${bilingual(
+                    "gradedBy"
+                  )}: ${answer.gradedBy}</div>`
+                : ""
+            }
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+    `;
+
+    // Create temporary element
+    const element = document.createElement("div");
+    element.innerHTML = htmlContent;
+    document.body.appendChild(element);
+
+    // PDF options
+    const opt = {
+      margin: 10,
+      filename: `Test_Results_${studentName.replace(/\s+/g, "_")}_${
+        new Date().toISOString().split("T")[0]
+      }.pdf`,
+      image: { type: "jpeg" as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
+    };
+
+    // Generate PDF
+    await html2pdf().set(opt).from(element).save();
+
+    // Clean up
+    document.body.removeChild(element);
+
+    ElMessage.success(
+      t("lobby.pdfDownloaded") || "PDF downloaded successfully"
+    );
   } catch (error: any) {
-    if (error !== "cancel") {
-      console.error("Error resetting access:", error);
-      ElMessage.error(error.response?.data?.detail || "Failed to reset access");
-    }
+    console.error("Error generating PDF:", error);
+    ElMessage.error(t("lobby.pdfError") || "Failed to generate PDF");
   }
+};
+
+// Helper function to format answers for PDF
+const formatAnswerForPDF = (
+  answer: any,
+  type: "student" | "correct"
+): string => {
+  const value =
+    type === "student" ? answer.studentAnswer : answer.correctAnswer;
+
+  if (value === null || value === undefined) {
+    return "No answer";
+  }
+
+  if (answer.questionType === "single-choice" && answer.options) {
+    return answer.options[value] || `Option ${value}`;
+  }
+
+  if (answer.questionType === "multiple-choice" && answer.options) {
+    const indices = value as number[];
+    return (
+      indices
+        ?.map((i: number) => answer.options[i] || `Option ${i}`)
+        .join(", ") || "-"
+    );
+  }
+
+  if (answer.questionType === "true-false") {
+    return value ? "True" : "False";
+  }
+
+  if (answer.questionType === "matching") {
+    const pairs = value as any[];
+    return pairs?.map((p: any) => `${p.left} → ${p.right}`).join("; ") || "-";
+  }
+
+  if (answer.questionType === "short-answer" && type === "correct") {
+    const keywords = value as string[];
+    return `Keywords: ${keywords?.join(", ") || "-"}`;
+  }
+
+  return String(value);
 };
 
 // View student test answers
@@ -816,20 +1105,17 @@ const handleActivateNow = async () => {
 
                       <!-- Reset access button (for in-progress or pending) -->
                       <el-tooltip
-                        :content="t('lobby.resetAccess') || 'Reset Access'"
-                        v-if="
-                          row.status === 'in-progress' ||
-                          row.status === 'pending'
-                        "
+                        :content="t('lobby.downloadPDF') || 'Download PDF'"
+                        v-if="row.status === 'completed'"
                       >
                         <el-button
-                          type="warning"
+                          type="primary"
                           size="small"
-                          :icon="RefreshRight"
+                          :icon="Download"
                           circle
                           @click="
-                            handleResetAccess(
-                              row.email,
+                            handleDownloadPDF(
+                              row.testId,
                               `${row.firstName} ${row.lastName}`
                             )
                           "

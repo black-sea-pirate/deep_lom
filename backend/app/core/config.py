@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50 MB
-    ALLOWED_EXTENSIONS: List[str] = ["pdf", "docx", "doc", "txt", "png", "jpg", "jpeg"]
+    ALLOWED_EXTENSIONS: List[str] = ["pdf", "docx", "doc", "txt", "pptx", "png", "jpg", "jpeg"]
     
     # CORS - stored as string, parsed to list
     BACKEND_CORS_ORIGINS: Union[List[str], str] = "http://localhost:5173,http://localhost:3000"

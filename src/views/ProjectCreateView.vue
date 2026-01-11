@@ -148,6 +148,37 @@ const getFileIcon = (fileType: string) => {
   return Document;
 };
 
+// Format file size helper
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
+
+// Format date helper
+const formatDate = (date: Date | string): string => {
+  const d = new Date(date);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } else if (diffDays === 1) {
+    return t("common.yesterday") || "Yesterday";
+  } else if (diffDays < 7) {
+    return `${diffDays} ${t("common.daysAgo") || "days ago"}`;
+  } else {
+    return d.toLocaleDateString([], {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  }
+};
+
 const isMaterialSelected = (materialId: string) => {
   return selectedMaterialIds.value.includes(materialId);
 };
@@ -487,11 +518,11 @@ onMounted(() => {
                 </el-button>
               </div>
 
-              <div v-else class="materials-grid">
+              <div v-else class="materials-list">
                 <div
                   v-for="material in filteredMaterials"
                   :key="material.id"
-                  class="material-item"
+                  class="material-list-item"
                   :class="{ selected: isMaterialSelected(material.id) }"
                   @click="toggleMaterialSelection(material.id)"
                 >
@@ -499,14 +530,31 @@ onMounted(() => {
                     :model-value="isMaterialSelected(material.id)"
                     class="material-checkbox"
                   />
-                  <el-icon :size="24" class="material-icon">
+                  <el-icon :size="20" class="material-icon">
                     <component :is="getFileIcon(material.fileType)" />
                   </el-icon>
                   <div class="material-info">
                     <div class="material-name">
                       {{ material.originalName || material.fileName }}
                     </div>
+                    <div class="material-meta">
+                      <span class="material-size">{{
+                        formatFileSize(material.fileSize)
+                      }}</span>
+                      <span class="material-separator">•</span>
+                      <span class="material-date">{{
+                        formatDate(material.uploadedAt)
+                      }}</span>
+                    </div>
                   </div>
+                  <el-tag
+                    v-if="isMaterialSelected(material.id)"
+                    type="success"
+                    size="small"
+                    class="selected-tag"
+                  >
+                    {{ t("common.selected") || "Selected" }}
+                  </el-tag>
                 </div>
               </div>
             </div>
@@ -922,15 +970,102 @@ onMounted(() => {
   }
 }
 
-.folders-grid,
-.materials-grid {
+.folders-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--spacing-md);
 }
 
-.folder-item,
-.material-item {
+// Materials List Styles (for Step 2)
+.materials-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: var(--spacing-xs);
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--color-background);
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+
+    &:hover {
+      background: var(--color-text-light);
+    }
+  }
+}
+
+.material-list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  background: var(--color-background);
+
+  &:hover {
+    border-color: var(--color-primary);
+    background: var(--color-surface);
+  }
+
+  &.selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary-light);
+  }
+
+  .material-checkbox {
+    flex-shrink: 0;
+  }
+
+  .material-icon {
+    color: var(--color-primary);
+    flex-shrink: 0;
+  }
+
+  .material-info {
+    flex: 1;
+    min-width: 0;
+
+    .material-name {
+      font-weight: 500;
+      color: var(--color-text);
+      font-size: 0.9rem;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .material-meta {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-xs);
+      font-size: 0.75rem;
+      color: var(--color-text-light);
+      margin-top: 2px;
+
+      .material-separator {
+        opacity: 0.5;
+      }
+    }
+  }
+
+  .selected-tag {
+    flex-shrink: 0;
+  }
+}
+
+.folder-item {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
@@ -951,13 +1086,10 @@ onMounted(() => {
     background: var(--color-primary-light);
   }
 
-  .folder-checkbox,
-  .material-checkbox {
+  .folder-checkbox {
     flex-shrink: 0;
   }
-}
 
-.folder-item {
   .folder-icon {
     color: var(--color-warning);
     flex-shrink: 0;
@@ -978,27 +1110,6 @@ onMounted(() => {
     .folder-meta {
       font-size: 0.8rem;
       color: var(--color-text-light);
-    }
-  }
-}
-
-.material-item {
-  .material-icon {
-    color: var(--color-primary);
-    flex-shrink: 0;
-  }
-
-  .material-info {
-    flex: 1;
-    min-width: 0;
-
-    .material-name {
-      font-weight: 500;
-      color: var(--color-text);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 0.9rem;
     }
   }
 }

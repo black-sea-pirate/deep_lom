@@ -1227,8 +1227,17 @@ async def get_project_test_results(
     for test in tests:
         if not test.student:
             continue
+        
+        # Use participant_email if available, otherwise fall back to student email
+        display_email = test.participant_email or test.student.email
+        display_email_lower = display_email.lower()
+        
+        # Skip if we already have a result for this participant email
+        # (this prevents duplicates when student has multiple emails)
+        if display_email_lower in students_with_tests:
+            continue
             
-        students_with_tests.add(test.student.email.lower())
+        students_with_tests.add(display_email_lower)
         
         # Calculate time taken
         time_taken = None
@@ -1243,13 +1252,13 @@ async def get_project_test_results(
         graded_count = sum(1 for a in test.answers if a.grading_status == 'completed')
         pending_ai_grading = sum(1 for a in test.answers if a.grading_status in ('pending', 'in_progress'))
         
-        # Get participant info
-        participant = participants.get(test.student.email.lower())
+        # Get participant info using the display email (participant email)
+        participant = participants.get(display_email_lower)
         
         results.append({
             "testId": str(test.id),
             "studentId": str(test.student_id),
-            "email": test.student.email,
+            "email": display_email,  # Show participant email, not student's primary email
             "firstName": participant.first_name if participant else test.student.first_name,
             "lastName": participant.last_name if participant else test.student.last_name,
             "status": test.status,  # pending, in-progress, completed, graded
@@ -1349,71 +1358,7 @@ async def delete_student_test_results(
     }
 
 
-@router.post("/{project_id}/reset-student/{student_email}")
-async def reset_student_test_access(
-    project_id: UUID,
-    student_email: str,
-    current_user: User = Depends(get_current_teacher),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Reset student's test access - delete their incomplete test
-    and allow them to start fresh. For cases when student had
-    technical issues (lag, browser crash, etc.)
-    """
-    from app.models.test import Test
-    
-    student_email = student_email.strip().lower()
-    
-    # Verify project ownership
-    query = select(Project).where(
-        Project.id == project_id,
-        Project.teacher_id == current_user.id,
-    )
-    result = await db.execute(query)
-    project = result.scalar_one_or_none()
-    
-    if not project:
-        raise NotFoundException(resource="Project", resource_id=str(project_id))
-    
-    # Find student by email
-    student_result = await db.execute(
-        select(User).where(func.lower(User.email) == student_email)
-    )
-    student = student_result.scalar_one_or_none()
-    
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student not found",
-        )
-    
-    # Find any incomplete tests
-    tests_result = await db.execute(
-        select(Test).where(
-            Test.project_id == project_id,
-            Test.student_id == student.id,
-            Test.status.in_(["pending", "in-progress"]),
-        )
-    )
-    incomplete_tests = tests_result.scalars().all()
-    
-    # Delete incomplete tests
-    reset_count = 0
-    for test in incomplete_tests:
-        await db.delete(test)
-        reset_count += 1
-    
-    await db.commit()
-    
-    return {
-        "message": f"Reset access for student. Deleted {reset_count} incomplete test(s).",
-        "resetCount": reset_count,
-        "studentEmail": student_email,
-    }
-
-
-@router.post("/{project_id}/complete", response_model=ProjectResponse)
+@router.post("/{project_id}/complete", response_model=MessageResponse)
 async def complete_project(
     project_id: UUID,
     current_user: User = Depends(get_current_teacher),
@@ -1425,11 +1370,6 @@ async def complete_project(
     query = select(Project).where(
         Project.id == project_id,
         Project.teacher_id == current_user.id,
-    )
-    query = query.options(
-        selectinload(Project.question_type_configs),
-        selectinload(Project.materials),
-        selectinload(Project.questions),
     )
     
     result = await db.execute(query)
@@ -1445,36 +1385,5 @@ async def complete_project(
     project.status = "completed"
     
     await db.commit()
-    await db.refresh(project)
     
-    # Build response
-    question_type_configs = []
-    for qtc in project.question_type_configs:
-        question_type_configs.append({
-            "type": qtc.question_type,
-            "count": qtc.count,
-            "timePerQuestion": qtc.time_per_question,
-        })
-    
-    return ProjectResponse(
-        id=str(project.id),
-        title=project.title,
-        description=project.description,
-        groupName=project.group_name,
-        status=project.status,
-        createdAt=project.created_at,
-        startTime=project.start_time,
-        endTime=project.end_time,
-        settings=ProjectSettingsBase(
-            totalTime=project.total_time or 60,
-            timerMode=project.timer_mode or "total",
-            timePerQuestion=project.time_per_question,
-            maxStudents=project.max_students or 30,
-            numVariants=project.num_variants or 1,
-            testLanguage=project.test_language or "same",
-            questionTypes=question_type_configs,
-        ),
-        questionsCount=len(project.questions) if project.questions else 0,
-        materialsCount=len(project.materials) if project.materials else 0,
-        vectorizationStatus=project.vectorization_status,
-    )
+    return MessageResponse(message="Project completed successfully")

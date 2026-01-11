@@ -239,6 +239,7 @@ export const materialService = {
       "application/pdf",
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "text/plain",
       "image/png",
       "image/jpeg",
@@ -251,7 +252,7 @@ export const materialService = {
    * @returns List of supported extensions
    */
   getSupportedExtensions(): string[] {
-    return [".pdf", ".doc", ".docx", ".txt", ".png", ".jpg", ".jpeg"];
+    return [".pdf", ".doc", ".docx", ".txt", ".pptx", ".png", ".jpg", ".jpeg"];
   },
 
   /**

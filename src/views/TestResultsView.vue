@@ -44,9 +44,13 @@ const scoreIcon = computed(() => {
 const hasWrittenQuestions = computed(() => {
   if (!results.value) return false;
   return results.value.questions.some(
-    (q) =>
-      q.type === "essay" || q.type === "short-answer" || q.type === "matching"
+    (q) => q.type === "essay" || q.type === "short-answer"
   );
+});
+
+// Check if AI grading should be shown (only for essay/short-answer questions)
+const showAiGradingPending = computed(() => {
+  return results.value?.aiGradingPending && hasWrittenQuestions.value;
 });
 
 // Load results
@@ -55,13 +59,20 @@ const loadResults = async () => {
     results.value = await testService.getTestResults(testId);
     error.value = null;
 
-    // If AI grading is still pending, keep refreshing
-    if (results.value.aiGradingPending) {
+    // Check if we need to keep refreshing (only if AI grading pending AND has essay/short-answer questions)
+    const needsRefresh =
+      results.value.aiGradingPending &&
+      results.value.questions.some(
+        (q) => q.type === "essay" || q.type === "short-answer"
+      );
+
+    // If AI grading is still pending for written questions, keep refreshing
+    if (needsRefresh) {
       if (!refreshInterval.value) {
         refreshInterval.value = setInterval(loadResults, 5000); // Refresh every 5 seconds
       }
     } else {
-      // Stop refreshing when grading is complete
+      // Stop refreshing when grading is complete or no written questions
       if (refreshInterval.value) {
         clearInterval(refreshInterval.value);
         refreshInterval.value = null;
@@ -261,7 +272,7 @@ onUnmounted(() => {
 
                   <!-- AI Grading Pending Alert -->
                   <el-alert
-                    v-if="results.aiGradingPending"
+                    v-if="showAiGradingPending"
                     :title="t('results.aiGradingInProgress')"
                     type="warning"
                     show-icon
