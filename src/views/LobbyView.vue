@@ -21,6 +21,7 @@ import {
 import {
   participantService,
   type Participant,
+  type Group,
 } from "@/services/participant.service";
 import html2pdf from "html2pdf.js";
 import api from "@/services/api";
@@ -64,6 +65,12 @@ const confirmedContacts = ref<Participant[]>([]);
 const selectedStudentEmail = ref<string>("");
 const loadingContacts = ref(false);
 
+// Groups for batch adding
+const groups = ref<Group[]>([]);
+const selectedGroupId = ref<string>("");
+const loadingGroups = ref(false);
+const addingGroup = ref(false);
+
 const showScheduleDialog = ref(false);
 const scheduleForm = ref({
   startTime: new Date(),
@@ -76,6 +83,7 @@ onMounted(async () => {
   await Promise.all([
     loadStudents(),
     loadConfirmedContacts(),
+    loadGroups(),
     loadTestResults(),
   ]);
 
@@ -127,6 +135,19 @@ const loadConfirmedContacts = async () => {
     confirmedContacts.value = [];
   } finally {
     loadingContacts.value = false;
+  }
+};
+
+// Load groups
+const loadGroups = async () => {
+  loadingGroups.value = true;
+  try {
+    groups.value = await participantService.getGroups();
+  } catch (error) {
+    console.error("Error loading groups:", error);
+    groups.value = [];
+  } finally {
+    loadingGroups.value = false;
   }
 };
 
@@ -608,6 +629,31 @@ const handleAddStudent = async () => {
   }
 };
 
+// Add entire group to project
+const handleAddGroup = async () => {
+  const groupId = selectedGroupId.value;
+
+  if (!groupId) {
+    ElMessage.warning(t("lobby.selectGroup") || "Please select a group");
+    return;
+  }
+
+  addingGroup.value = true;
+  try {
+    const result = await projectService.addGroupToProject(projectId, groupId);
+    allowedStudents.value = result.students;
+    ElMessage.success(
+      result.message || `Added ${result.added} students from group`
+    );
+    selectedGroupId.value = "";
+  } catch (error: any) {
+    console.error("Error adding group:", error);
+    ElMessage.error(error.response?.data?.detail || "Failed to add group");
+  } finally {
+    addingGroup.value = false;
+  }
+};
+
 const handleRemoveStudent = async (email: string) => {
   try {
     await ElMessageBox.confirm(
@@ -756,13 +802,14 @@ const handleActivateNow = async () => {
               </template>
 
               <div class="add-student-section">
+                <!-- Individual student selection -->
                 <el-select
                   v-model="selectedStudentEmail"
                   filterable
                   :placeholder="
                     t('teacher.selectStudent') || 'Select student from contacts'
                   "
-                  style="width: 350px; margin-right: 12px"
+                  style="width: 280px; margin-right: 12px"
                   :loading="loadingContacts"
                   :no-data-text="
                     t('teacher.noConfirmedContacts') ||
@@ -791,6 +838,36 @@ const handleActivateNow = async () => {
                   :disabled="!selectedStudentEmail"
                 >
                   {{ t("teacher.addStudent") }}
+                </el-button>
+
+                <!-- Divider -->
+                <span
+                  style="margin: 0 16px; color: var(--el-text-color-secondary)"
+                  >{{ t("common.or") || "or" }}</span
+                >
+
+                <!-- Group selection -->
+                <el-select
+                  v-model="selectedGroupId"
+                  :placeholder="t('lobby.selectGroup') || 'Select a group'"
+                  style="width: 200px; margin-right: 12px"
+                  :loading="loadingGroups"
+                  :no-data-text="t('lobby.noGroups') || 'No groups available'"
+                >
+                  <el-option
+                    v-for="group in groups"
+                    :key="group.id"
+                    :label="`${group.name} (${group.membersCount})`"
+                    :value="group.id"
+                  />
+                </el-select>
+                <el-button
+                  type="success"
+                  @click="handleAddGroup"
+                  :loading="addingGroup"
+                  :disabled="!selectedGroupId"
+                >
+                  {{ t("lobby.addGroup") || "Add Group" }}
                 </el-button>
               </div>
 
@@ -1103,10 +1180,12 @@ const handleActivateNow = async () => {
                         />
                       </el-tooltip>
 
-                      <!-- Reset access button (for in-progress or pending) -->
+                      <!-- Download PDF button (for completed or graded) -->
                       <el-tooltip
                         :content="t('lobby.downloadPDF') || 'Download PDF'"
-                        v-if="row.status === 'completed'"
+                        v-if="
+                          row.status === 'completed' || row.status === 'graded'
+                        "
                       >
                         <el-button
                           type="primary"

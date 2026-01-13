@@ -322,6 +322,24 @@ export const projectService = {
   },
 
   /**
+   * Add all participants from a group to project
+   * @param id - Project ID
+   * @param groupId - Group ID
+   * @returns Updated students list with added count
+   */
+  async addGroupToProject(
+    id: string,
+    groupId: string
+  ): Promise<{ message: string; added: number; students: ProjectStudent[] }> {
+    const response = await api.post<{
+      message: string;
+      added: number;
+      students: ProjectStudent[];
+    }>(`/projects/${id}/students/group/${groupId}`);
+    return response.data;
+  },
+
+  /**
    * Remove a student from project
    * @param id - Project ID
    * @param email - Student email to remove

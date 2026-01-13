@@ -306,14 +306,6 @@ const goBack = () => {
             {{ t("project.editQuestions") || "Edit Questions" }}
           </el-button>
           <el-button
-            v-if="project.status === 'ready'"
-            type="success"
-            :icon="VideoPlay"
-            @click="handleActivate"
-          >
-            {{ t("project.activate") || "Activate" }}
-          </el-button>
-          <el-button
             v-if="project.status === 'active'"
             type="warning"
             :icon="CircleCheck"
@@ -363,7 +355,13 @@ const goBack = () => {
           </template>
 
           <div class="settings-grid">
-            <div class="setting-item">
+            <div
+              class="setting-item"
+              v-if="
+                project.settings?.timerMode === 'total' ||
+                !project.settings?.timerMode
+              "
+            >
               <el-icon :size="24"><Timer /></el-icon>
               <div class="setting-info">
                 <span class="setting-value">{{
@@ -374,7 +372,10 @@ const goBack = () => {
                 }}</span>
               </div>
             </div>
-            <div class="setting-item">
+            <div
+              class="setting-item"
+              v-if="project.settings?.timerMode === 'per_question'"
+            >
               <el-icon :size="24"><Timer /></el-icon>
               <div class="setting-info">
                 <span class="setting-value"

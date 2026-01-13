@@ -36,6 +36,7 @@ export default {
     studentAnswer: "Student's Answer",
     correctAnswer: "Correct Answer",
     feedback: "Feedback",
+    or: "or",
   },
 
   // Navigation
@@ -173,6 +174,7 @@ export default {
     statusCompleted: "Completed",
     statusGraded: "Graded",
     statusNotStarted: "Not Started",
+    notStarted: "Not Started",
     confirmDeleteResults:
       "Are you sure you want to delete all test results for",
     confirmDeleteWarning:
@@ -182,6 +184,11 @@ export default {
     pdfError: "Failed to generate PDF",
     deleteSuccess: "Test results deleted successfully",
     studentAnswers: "Student Answers",
+    selectGroup: "Select a group",
+    addGroup: "Add Group",
+    noGroups: "No groups available",
+    pendingGrading: "Pending AI Grading",
+    graded: "Graded",
   },
 
   // Teacher Settings
@@ -332,6 +339,8 @@ export default {
     configureSettings: "Configure test settings",
     generatingTests: "Generating tests...",
     testsGenerated: "Tests generated successfully!",
+    readyToTest: "Project created and ready for testing!",
+    goToDashboard: "Go to Dashboard",
     selectMaterials: "Select Materials",
     selectMaterialsHint:
       "Choose materials from your library to use for test generation",

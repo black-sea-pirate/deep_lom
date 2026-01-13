@@ -25,6 +25,7 @@ const { t } = useI18n();
 const currentStep = ref(0);
 const loading = ref(false);
 const loadingMaterials = ref(false);
+const generationCompleted = ref(false);
 
 // Progress tracking
 const progressStep = ref("");
@@ -336,6 +337,7 @@ const handleGenerate = async () => {
     progressPercent.value = 100;
     progressStep.value = "Complete!";
     progressDetails.value = "";
+    generationCompleted.value = true;
 
     ElMessage.success(t("wizard.testsGenerated"));
     router.push("/teacher");
@@ -778,9 +780,20 @@ onMounted(() => {
             <p v-if="loading" class="progress-hint">
               Please wait, do not close this page
             </p>
-            <p v-if="!loading">
+            <p v-if="!loading && !generationCompleted">
               Ready to generate tests for {{ projectData.title }}
             </p>
+            <p v-if="generationCompleted" class="progress-hint" style="color: var(--el-color-success);">
+              {{ t("wizard.readyToTest") || "Ready to generate tests for all test case" }}
+            </p>
+            <el-button 
+              v-if="generationCompleted" 
+              type="primary" 
+              style="margin-top: 16px;"
+              @click="router.push('/teacher')"
+            >
+              {{ t("wizard.goToDashboard") || "Go to Dashboard" }}
+            </el-button>
           </div>
         </div>
       </div>
@@ -801,9 +814,10 @@ onMounted(() => {
               v-else
               type="success"
               :loading="loading"
+              :disabled="generationCompleted"
               @click="handleGenerate"
             >
-              {{ t("wizard.step4") }}
+              {{ generationCompleted ? t("wizard.testsGenerated") : t("wizard.step4") }}
             </el-button>
           </div>
         </div>

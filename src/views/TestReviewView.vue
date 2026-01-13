@@ -147,38 +147,32 @@ onMounted(() => {
           <h3>{{ t("common.summary") || "Summary" }}</h3>
         </template>
         <el-row :gutter="20">
-          <el-col :span="6">
+          <el-col :span="8">
             <el-statistic :title="t('common.student') || 'Student'">
               <template #default>
-                {{ testData.studentName || testData.studentEmail }}
+                {{
+                  testData.studentFirstName && testData.studentLastName
+                    ? `${testData.studentFirstName} ${testData.studentLastName}`
+                    : testData.studentName ||
+                      testData.studentEmail ||
+                      testData.participantEmail ||
+                      "-"
+                }}
               </template>
             </el-statistic>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="8">
             <el-statistic
               :title="t('lobby.score') || 'Score'"
               :value="scorePercent"
               suffix="%"
             />
           </el-col>
-          <el-col :span="6">
+          <el-col :span="8">
             <el-statistic
               :title="t('common.points') || 'Points'"
               :value="`${totalScore.toFixed(1)} / ${maxScore}`"
             />
-          </el-col>
-          <el-col :span="6">
-            <el-statistic :title="t('lobby.testStatus') || 'Status'">
-              <template #default>
-                <el-tag
-                  :type="
-                    testData.status === 'completed' ? 'success' : 'warning'
-                  "
-                >
-                  {{ testData.status }}
-                </el-tag>
-              </template>
-            </el-statistic>
           </el-col>
         </el-row>
       </el-card>
@@ -260,7 +254,14 @@ onMounted(() => {
               >
               <span class="value feedback">{{ answer.feedback }}</span>
             </div>
-            <div class="answer-row" v-if="answer.gradingStatus === 'pending'">
+            <div
+              class="answer-row"
+              v-if="
+                answer.gradingStatus === 'pending' &&
+                (answer.questionType === 'essay' ||
+                  answer.questionType === 'short-answer')
+              "
+            >
               <el-tag type="warning" size="small">
                 {{ t("lobby.pendingGrading") || "Pending AI Grading" }}
               </el-tag>

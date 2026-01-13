@@ -36,6 +36,7 @@ export default {
     studentAnswer: "Ответ студента",
     correctAnswer: "Правильный ответ",
     feedback: "Комментарий",
+    or: "или",
   },
 
   // Navigation
@@ -172,6 +173,7 @@ export default {
     statusCompleted: "Завершено",
     statusGraded: "Проверено",
     statusNotStarted: "Не начато",
+    notStarted: "Не начал",
     confirmDeleteResults:
       "Вы уверены, что хотите удалить все результаты тестирования для",
     confirmDeleteWarning:
@@ -181,6 +183,11 @@ export default {
     pdfError: "Не удалось сгенерировать PDF",
     deleteSuccess: "Результаты теста успешно удалены",
     studentAnswers: "Ответы студента",
+    selectGroup: "Выберите группу",
+    addGroup: "Добавить группу",
+    noGroups: "Нет доступных групп",
+    pendingGrading: "Ожидание проверки ИИ",
+    graded: "Проверено",
   },
 
   // Teacher Settings
@@ -330,6 +337,8 @@ export default {
     configureSettings: "Настройте параметры теста",
     generatingTests: "Генерация тестов...",
     testsGenerated: "Тесты успешно сгенерированы!",
+    readyToTest: "Проект создан и готов к тестированию!",
+    goToDashboard: "Перейти на главную",
     selectMaterials: "Выбрать материалы",
     selectMaterialsHint: "Выберите материалы из библиотеки для генерации теста",
     selected: "выбрано",

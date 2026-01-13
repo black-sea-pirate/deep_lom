@@ -447,12 +447,119 @@ Return the full document content as plain text.""",
         """
         Generate questions using standard chat completion (no file_search needed).
         
-        This is more reliable because we've already extracted the content.
+        Uses batching for large question counts to avoid token limits.
         
         Args:
             content: Document content to generate questions from
             question_configs: List of {type, count} configurations
             target_language: Language code for generated questions (en, ru, ua, pl)
+        """
+        # Calculate total questions
+        total_questions = sum(c.get("count", 0) for c in question_configs)
+        
+        # If more than 15 questions, use batching
+        MAX_QUESTIONS_PER_BATCH = 15
+        
+        if total_questions > MAX_QUESTIONS_PER_BATCH:
+            print(f"Large request ({total_questions} questions), using batched generation...")
+            return self._generate_questions_batched(
+                content=content,
+                question_configs=question_configs,
+                target_language=target_language,
+                batch_size=MAX_QUESTIONS_PER_BATCH,
+            )
+        
+        return self._generate_questions_single_batch(
+            content=content,
+            question_configs=question_configs,
+            target_language=target_language,
+        )
+    
+    def _generate_questions_batched(
+        self,
+        content: str,
+        question_configs: List[Dict[str, Any]],
+        target_language: str,
+        batch_size: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate questions in batches to avoid token limits.
+        
+        Splits question_configs into smaller batches and generates them separately.
+        Passes already generated questions to next batches to avoid duplicates.
+        """
+        all_questions = []
+        
+        # Create batches of question configs
+        batches = []
+        current_batch = []
+        current_count = 0
+        
+        for config in question_configs:
+            q_type = config["type"]
+            remaining = config["count"]
+            
+            while remaining > 0:
+                available_in_batch = batch_size - current_count
+                
+                if available_in_batch <= 0:
+                    # Current batch is full, save it and start new one
+                    batches.append(current_batch)
+                    current_batch = []
+                    current_count = 0
+                    available_in_batch = batch_size
+                
+                # Take as many as we can fit in this batch
+                take = min(remaining, available_in_batch)
+                current_batch.append({"type": q_type, "count": take})
+                current_count += take
+                remaining -= take
+        
+        # Don't forget the last batch
+        if current_batch:
+            batches.append(current_batch)
+        
+        print(f"Split into {len(batches)} batches: {[sum(c['count'] for c in b) for b in batches]} questions each")
+        
+        # Generate each batch, passing previous questions to avoid duplicates
+        for i, batch_configs in enumerate(batches):
+            batch_total = sum(c["count"] for c in batch_configs)
+            print(f"Generating batch {i+1}/{len(batches)} ({batch_total} questions)...")
+            
+            # Build list of already generated question texts for this batch
+            existing_questions = [q.get("text", "")[:100] for q in all_questions] if all_questions else None
+            
+            try:
+                batch_questions = self._generate_questions_single_batch(
+                    content=content,
+                    question_configs=batch_configs,
+                    target_language=target_language,
+                    existing_questions=existing_questions,
+                )
+                all_questions.extend(batch_questions)
+                print(f"Batch {i+1} generated {len(batch_questions)} questions")
+            except Exception as e:
+                print(f"Error in batch {i+1}: {e}")
+                # Continue with other batches instead of failing completely
+                continue
+        
+        return all_questions
+    
+    def _generate_questions_single_batch(
+        self,
+        content: str,
+        question_configs: List[Dict[str, Any]],
+        target_language: str = "en",
+        existing_questions: List[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate a single batch of questions.
+        
+        Args:
+            content: Document content to generate questions from
+            question_configs: List of {type, count} configurations
+            target_language: Language code
+            existing_questions: List of already generated question texts to avoid duplicates
         """
         # Language name mapping for prompts
         language_names = {
@@ -501,6 +608,23 @@ Format: {"type": "matching", "text": "Match the following:", "pairs": [{"left": 
             if c["type"] in type_instructions
         ])
         
+        # Calculate required tokens based on question count
+        total_questions = sum(c.get("count", 0) for c in question_configs)
+        # Estimate ~300 tokens per question
+        estimated_tokens = total_questions * 300
+        max_tokens = min(max(estimated_tokens, 4000), 16000)  # Between 4k and 16k
+        
+        # Build duplicate avoidance instruction if we have existing questions
+        duplicate_warning = ""
+        if existing_questions and len(existing_questions) > 0:
+            # Only include first 20 existing questions to avoid token overflow
+            sample_existing = existing_questions[:20]
+            existing_list = "\n".join([f"- {q}" for q in sample_existing])
+            duplicate_warning = f"""
+10. CRITICAL: DO NOT generate questions similar to these already existing questions:
+{existing_list}
+Generate COMPLETELY DIFFERENT questions about OTHER aspects of the content."""
+        
         system_prompt = f"""You are an expert educational assessment creator.
 Your task is to generate test questions based STRICTLY on the provided document content.
 
@@ -515,7 +639,7 @@ CRITICAL RULES:
 8. Translate any technical content from the document into {lang_name} for the questions
 9. IMPORTANT: RANDOMIZE the position of the correct answer! Do NOT always put the correct answer first. 
    The correct answer should appear at random positions (0, 1, 2, or 3) across different questions.
-   For example: Q1 correct at index 2, Q2 correct at index 0, Q3 correct at index 3, etc."""
+   For example: Q1 correct at index 2, Q2 correct at index 0, Q3 correct at index 3, etc.{duplicate_warning}"""
 
         user_prompt = f"""Based on the following DOCUMENT CONTENT, generate test questions.
 IMPORTANT: Generate ALL questions and answers in {lang_name} language, even if the source document is in a different language.
@@ -535,6 +659,7 @@ Write ALL question text, options, and answers in {lang_name}.
 Return a JSON array of questions. No markdown, no explanations."""
 
         try:
+            print(f"Requesting {total_questions} questions with max_tokens={max_tokens}")
             response = self.client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 messages=[
@@ -542,7 +667,7 @@ Return a JSON array of questions. No markdown, no explanations."""
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,
-                max_tokens=4000,
+                max_tokens=max_tokens,
             )
             
             response_text = response.choices[0].message.content

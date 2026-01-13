@@ -33,6 +33,7 @@ export default {
     studentAnswer: "Відповідь студента",
     correctAnswer: "Правильна відповідь",
     feedback: "Коментар",
+    or: "або",
     name: "Ім'я",
     status: "Статус",
     actions: "Дії",
@@ -170,6 +171,7 @@ export default {
     statusCompleted: "Завершено",
     statusGraded: "Перевірено",
     statusNotStarted: "Не розпочато",
+    notStarted: "Не розпочав",
     confirmDeleteResults:
       "Ви впевнені, що хочете видалити всі результати тестування для",
     confirmDeleteWarning:
@@ -179,6 +181,11 @@ export default {
     pdfError: "Не вдалося згенерувати PDF",
     deleteSuccess: "Результати тесту успішно видалено",
     studentAnswers: "Відповіді студента",
+    selectGroup: "Оберіть групу",
+    addGroup: "Додати групу",
+    noGroups: "Немає доступних груп",
+    pendingGrading: "Очікування перевірки ШІ",
+    graded: "Перевірено",
   },
 
   // Teacher Settings
@@ -328,6 +335,8 @@ export default {
     configureSettings: "Налаштуйте параметри тесту",
     generatingTests: "Генерація тестів...",
     testsGenerated: "Тести успішно згенеровано!",
+    readyToTest: "Проект створено і готовий до тестування!",
+    goToDashboard: "Перейти на головну",
     selectMaterials: "Обрати матеріали",
     selectMaterialsHint: "Оберіть матеріали з бібліотеки для генерації тесту",
     selected: "обрано",

@@ -1177,6 +1177,95 @@ async def remove_student_from_project(
     }
 
 
+@router.post("/{project_id}/students/group/{group_id}")
+async def add_group_to_project(
+    project_id: UUID,
+    group_id: UUID,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Add all participants from a group to project's allowed students list.
+    
+    Returns number of added participants and updated student list.
+    """
+    from app.models.participant import ParticipantGroup, Participant
+    
+    # Verify project ownership
+    query = select(Project).where(
+        Project.id == project_id,
+        Project.teacher_id == current_user.id,
+    )
+    result = await db.execute(query)
+    project = result.scalar_one_or_none()
+    
+    if not project:
+        raise NotFoundException(resource="Project", resource_id=str(project_id))
+    
+    # Verify group ownership
+    group_result = await db.execute(
+        select(ParticipantGroup).where(
+            ParticipantGroup.id == group_id,
+            ParticipantGroup.teacher_id == current_user.id,
+        )
+    )
+    group = group_result.scalar_one_or_none()
+    
+    if not group:
+        raise NotFoundException(resource="Group", resource_id=str(group_id))
+    
+    # Get all confirmed participants in the group
+    participants_result = await db.execute(
+        select(Participant).where(
+            Participant.group_id == group_id,
+            Participant.confirmation_status == "confirmed",
+        )
+    )
+    group_participants = participants_result.scalars().all()
+    
+    if not group_participants:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No confirmed participants in this group",
+        )
+    
+    # Initialize if None
+    if project.allowed_students is None:
+        project.allowed_students = []
+    
+    existing_emails = set(e.lower() for e in project.allowed_students)
+    added_count = 0
+    new_list = list(project.allowed_students)  # Create a new list to trigger SQLAlchemy change detection
+    
+    for participant in group_participants:
+        email = participant.email.lower()
+        if email not in existing_emails:
+            new_list.append(email)
+            existing_emails.add(email)
+            added_count += 1
+    
+    # Assign new list to trigger SQLAlchemy change detection for JSONB
+    project.allowed_students = new_list
+    
+    await db.commit()
+    await db.refresh(project)
+    
+    # Get all participant profiles for response
+    all_participants_result = await db.execute(
+        select(Participant).where(
+            Participant.teacher_id == current_user.id,
+            Participant.email.in_([e.lower() for e in project.allowed_students]),
+        )
+    )
+    all_participants = all_participants_result.scalars().all()
+    
+    return {
+        "message": f"Added {added_count} students from group '{group.name}'",
+        "added": added_count,
+        "students": _build_student_profiles(project.allowed_students, all_participants),
+    }
+
+
 @router.get("/{project_id}/test-results")
 async def get_project_test_results(
     project_id: UUID,
@@ -1201,10 +1290,13 @@ async def get_project_test_results(
     if not project:
         raise NotFoundException(resource="Project", resource_id=str(project_id))
     
-    # Get all tests for this project with student info
+    # Get all tests for this project with student info and answer questions
     tests_query = (
         select(Test)
-        .options(selectinload(Test.student), selectinload(Test.answers))
+        .options(
+            selectinload(Test.student), 
+            selectinload(Test.answers).selectinload(Answer.question)
+        )
         .where(Test.project_id == project_id)
     )
     tests_result = await db.execute(tests_query)
@@ -1248,9 +1340,12 @@ async def get_project_test_results(
             time_taken = int((datetime.utcnow() - test.started_at).total_seconds())
         
         # Calculate score and grading info
-        total_questions = len(test.answers)
-        graded_count = sum(1 for a in test.answers if a.grading_status == 'completed')
-        pending_ai_grading = sum(1 for a in test.answers if a.grading_status in ('pending', 'in_progress'))
+        # Only count questions that require AI grading (short-answer, essay)
+        ai_gradable_types = ('short-answer', 'essay')
+        ai_gradable_answers = [a for a in test.answers if a.question and a.question.question_type in ai_gradable_types]
+        total_questions = len(ai_gradable_answers)
+        graded_count = sum(1 for a in ai_gradable_answers if a.grading_status == 'completed')
+        pending_ai_grading = sum(1 for a in ai_gradable_answers if a.grading_status in ('pending', 'in_progress'))
         
         # Get participant info using the display email (participant email)
         participant = participants.get(display_email_lower)
@@ -1324,26 +1419,37 @@ async def delete_student_test_results(
     if not project:
         raise NotFoundException(resource="Project", resource_id=str(project_id))
     
-    # Find student by email
-    student_result = await db.execute(
-        select(User).where(func.lower(User.email) == student_email)
-    )
-    student = student_result.scalar_one_or_none()
-    
-    if not student:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Student not found",
-        )
-    
-    # Delete all tests for this student in this project
+    # Find tests by participant_email OR by registered student email
+    # First try to find by participant_email (most common case)
     tests_result = await db.execute(
         select(Test).where(
             Test.project_id == project_id,
-            Test.student_id == student.id,
+            func.lower(Test.participant_email) == student_email,
         )
     )
-    tests = tests_result.scalars().all()
+    tests = list(tests_result.scalars().all())
+    
+    # If no tests found by participant_email, try by registered user
+    if not tests:
+        student_result = await db.execute(
+            select(User).where(func.lower(User.email) == student_email)
+        )
+        student = student_result.scalar_one_or_none()
+        
+        if student:
+            tests_result = await db.execute(
+                select(Test).where(
+                    Test.project_id == project_id,
+                    Test.student_id == student.id,
+                )
+            )
+            tests = list(tests_result.scalars().all())
+    
+    if not tests:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No test results found for this student",
+        )
     
     deleted_count = 0
     for test in tests:

@@ -628,13 +628,38 @@ async def get_test_details_for_teacher(
     # Sort by question order if available
     # answers_detail.sort(key=lambda x: questions.get(x["questionId"], Question()).order)
     
+    # Get participant info if available
+    participant_first_name = None
+    participant_last_name = None
+    display_email = test.participant_email or (test.student.email if test.student else None)
+    
+    if test.participant_email:
+        from app.models.participant import Participant
+        participant_result = await db.execute(
+            select(Participant).where(
+                Participant.email == test.participant_email.lower(),
+                Participant.teacher_id == current_user.id,
+            )
+        )
+        participant = participant_result.scalar_one_or_none()
+        if participant:
+            participant_first_name = participant.first_name
+            participant_last_name = participant.last_name
+    
+    # Determine display name: prefer participant name, then student name
+    display_first_name = participant_first_name or (test.student.first_name if test.student else None)
+    display_last_name = participant_last_name or (test.student.last_name if test.student else None)
+    
     return {
         "testId": str(test.id),
         "projectId": str(test.project_id),
         "projectTitle": project.title,
         "studentId": str(test.student_id) if test.student_id else None,
         "studentEmail": test.student.email if test.student else None,
-        "studentName": f"{test.student.first_name or ''} {test.student.last_name or ''}".strip() if test.student else None,
+        "participantEmail": test.participant_email,
+        "studentName": f"{display_first_name or ''} {display_last_name or ''}".strip() if (display_first_name or display_last_name) else None,
+        "studentFirstName": display_first_name,
+        "studentLastName": display_last_name,
         "status": test.status,
         "score": test.score,
         "maxScore": test.max_score,
