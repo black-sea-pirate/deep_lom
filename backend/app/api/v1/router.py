@@ -6,7 +6,7 @@ Main router that includes all endpoint routers.
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, projects, materials, participants, tests, student, lobby, analytics
+from app.api.v1.endpoints import auth, projects, materials, participants, tests, student, analytics
 
 api_router = APIRouter()
 
@@ -51,10 +51,4 @@ api_router.include_router(
     analytics.router,
     prefix="/analytics",
     tags=["Analytics"],
-)
-
-# WebSocket routes don't need prefix as they use full path
-api_router.include_router(
-    lobby.router,
-    tags=["Lobby WebSocket"],
 )

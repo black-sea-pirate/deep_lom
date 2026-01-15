@@ -65,11 +65,3 @@ export type {
   UpcomingTestInfo,
   ContactRequest,
 } from "./student.service";
-
-export { LobbyWebSocket, useLobbyWebSocket } from "./websocket.service";
-export type {
-  LobbyStudent,
-  LobbyState,
-  LobbyMessage,
-  ConnectionStatus,
-} from "./websocket.service";

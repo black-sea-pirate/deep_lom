@@ -29,9 +29,5 @@ openai>=1.56.0
 # HTTP client
 httpx==0.28.0
 
-# Monitoring
-prometheus-fastapi-instrumentator==7.0.0
-prometheus-client==0.21.0
-
 # Utilities
 python-dotenv==1.0.1

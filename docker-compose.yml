@@ -138,86 +138,10 @@ services:
     networks:
       - mentis_network
 
-  # ===========================================================================
-  # PROMETHEUS - Metrics Collection
-  # ===========================================================================
-  prometheus:
-    image: prom/prometheus:v2.54.0
-    container_name: mentis_prometheus
-    restart: unless-stopped
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--storage.tsdb.retention.time=15d"
-      - "--web.enable-lifecycle"
-      - "--web.enable-admin-api"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
-      - prometheus_data:/prometheus
-    depends_on:
-      - backend
-    networks:
-      - mentis_network
-
-  # ===========================================================================
-  # GRAFANA - Metrics Visualization
-  # ===========================================================================
-  grafana:
-    image: grafana/grafana:11.2.0
-    container_name: mentis_grafana
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-MentisGrafana2025!}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
-      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-piechart-panel
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - grafana_data:/var/lib/grafana
-    depends_on:
-      - prometheus
-    ports:
-      - "3000:3000"
-    networks:
-      - mentis_network
-
-  # ===========================================================================
-  # REDIS EXPORTER - Redis Metrics for Prometheus
-  # ===========================================================================
-  redis-exporter:
-    image: oliver006/redis_exporter:v1.63.0
-    container_name: mentis_redis_exporter
-    restart: unless-stopped
-    environment:
-      REDIS_ADDR: redis://redis:6379
-    depends_on:
-      - redis
-    networks:
-      - mentis_network
-
-  # ===========================================================================
-  # POSTGRES EXPORTER - PostgreSQL Metrics for Prometheus
-  # ===========================================================================
-  postgres-exporter:
-    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
-    container_name: mentis_postgres_exporter
-    restart: unless-stopped
-    environment:
-      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER:-mentis_admin}:${POSTGRES_PASSWORD:-MentisSecure2025!}@postgres:5432/${POSTGRES_DB:-mentis_db}?sslmode=disable
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - mentis_network
-
 volumes:
   postgres_data:
   redis_data:
   uploads_data:
-  prometheus_data:
-  grafana_data:
 
 networks:
   mentis_network:

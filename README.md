@@ -1,257 +1,146 @@
-# 🎓 AI Test Generation Platform (Mentis)
+# 🎓 Mentis — AI Test Generation Platform
 
-> Современная веб-платформа для автоматического создания персонализированных тестов с использованием GPT-4.1 и OpenAI Vector Stores
+> Веб-платформа для автоматической генерации персонализированных тестов с использованием GPT-4.1 и OpenAI Vector Stores (RAG)
 
 ## 📋 О проекте
 
-Это дипломный проект полноценного fullstack веб-приложения, которое помогает преподавателям создавать уникальные тесты на основе учебных материалов и оценивать ответы студентов с помощью искусственного интеллекта.
+**Mentis** — дипломный fullstack проект, помогающий преподавателям создавать уникальные тесты на основе учебных материалов с AI-оценкой ответов студентов.
 
-**🌐 Продакшен**: https://mentis.forzone.uk
+**🌐 Production:** https://mentis.forzone.uk  
+**API Docs:** https://mentis.forzone.uk/api/docs
 
-### ✨ Реализованные возможности
+## ✨ Возможности
 
-#### Для преподавателей:
+### Для преподавателей
 
-- ✅ Регистрация и авторизация
-- ✅ Dashboard с списком проектов
-- ✅ Создание проектов (wizard интерфейс)
-- ✅ Настройка параметров тестов
-- ✅ Загрузка учебных материалов
-- ✅ Лобби для студентов
-- ✅ Редактор вопросов
+- Wizard создания проектов (4 шага)
+- Загрузка материалов (PDF, DOCX, TXT)
+- Генерация N уникальных вариантов теста (защита от списывания)
+- Два режима таймера: общий / на вопрос
+- Редактор вопросов с фильтрацией по вариантам
+- Lobby для управления тестом
+- AI-оценка эссе и коротких ответов
 
-#### Для студентов:
+### Для студентов
 
-- ✅ Регистрация и авторизация
-- ✅ Dashboard с статистикой
-- ✅ Список предстоящих тестов
-- ✅ Интерфейс прохождения тестов
-- ✅ Просмотр результатов
+- Dashboard с предстоящими тестами
+- Обратный отсчёт до начала
+- Интерфейс прохождения теста
+- Просмотр результатов с feedback
 
-#### Типы вопросов:
+### Типы вопросов
 
-- Single Choice (один правильный ответ)
-- Multiple Choice (несколько правильных ответов)
+- Single Choice / Multiple Choice
 - True/False
-- Short Answer (краткий ответ)
-- Essay (эссе)
-- Matching (сопоставление)
+- Short Answer (AI grading)
+- Essay (AI grading)
+- Matching
 
 ## 🛠 Технологический стек
 
-### Frontend:
+| Layer              | Technologies                                                                     |
+| ------------------ | -------------------------------------------------------------------------------- |
+| **Frontend**       | Vue 3, TypeScript, Vite, Element Plus, Pinia, Vue Router, Vue I18n (en/pl/ua/ru) |
+| **Backend**        | FastAPI 0.115, Python 3.11, SQLAlchemy 2.0 async, Pydantic v2, Celery            |
+| **Database**       | PostgreSQL 16, Redis 7                                                           |
+| **AI/RAG**         | OpenAI GPT-4.1, Vector Stores, двухшаговый RAG                                   |
+| **Infrastructure** | Docker Compose (6 сервисов), Nginx, Cloudflare Tunnel                            |
 
-- **Vue 3** (Composition API) - современный прогрессивный фреймворк
-- **Vite** - быстрый build tool
-- **TypeScript** - типизация для надежности
-- **Element Plus** - UI компоненты
-- **Vue Router 4** - маршрутизация
-- **Pinia** - state management
-- **Vue I18n** - интернационализация
-- **SCSS** - препроцессор стилей
+## 🚀 Быстрый старт
 
-### Backend:
+### Требования
 
-- **FastAPI 0.115** (Python 3.11) — async REST API
-- **SQLAlchemy 2.0** — async ORM
-- **PostgreSQL 16** — основная БД
-- **Redis 7** — кэширование и Celery broker
-- **OpenAI Vector Stores** — векторизация документов для RAG
-- **OpenAI GPT-4.1** — генерация тестов
-- **Celery** — фоновые задачи
-- **JWT** — аутентификация
+- Docker & Docker Compose
+- OpenAI API Key
+- Cloudflare Tunnel Token (для production)
 
-### Infrastructure:
+### Запуск
 
-- **Docker Compose** — оркестрация 10 сервисов
-- **Nginx** — reverse proxy + frontend
-- **Cloudflare Tunnel** — HTTPS без открытия портов
-- **Prometheus + Grafana** — мониторинг
+```bash
+# Клонирование
+git clone https://github.com/black-sea-pirate/deep_lom.git
+cd deep_lom
 
-### Поддержка языков:
+# Настройка
+cp .env.example .env
+# Отредактируйте .env: OPENAI_API_KEY, CLOUDFLARE_TUNNEL_TOKEN
+
+# Запуск всех сервисов
+docker-compose up -d --build
+
+# Проверка
+docker ps
+```
+
+### Локальная разработка (Frontend)
+
+```bash
+npm install
+npm run dev
+# Открыть http://localhost:5173
+```
+
+## 📁 Структура проекта
+
+```
+mentis/
+├── src/                    # Vue 3 Frontend
+│   ├── views/              # Страницы (Login, Dashboard, Lobby, TestTake...)
+│   ├── services/           # API сервисы
+│   ├── stores/             # Pinia stores
+│   ├── i18n/locales/       # 4 языка
+│   └── types/              # TypeScript типы
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/         # REST endpoints
+│   │   ├── models/         # SQLAlchemy модели
+│   │   ├── services/       # AI генерация, RAG
+│   │   └── tasks/          # Celery задачи
+│   └── alembic/            # 10 миграций БД
+├── docker-compose.yml      # 6 сервисов
+└── nginx.conf
+```
+
+## 🐳 Docker сервисы
+
+| Сервис          | Назначение                             |
+| --------------- | -------------------------------------- |
+| `postgres`      | PostgreSQL 16 — база данных            |
+| `redis`         | Redis 7 — Celery broker + кэш          |
+| `backend`       | FastAPI приложение                     |
+| `celery_worker` | Фоновые задачи (генерация, AI grading) |
+| `nginx`         | Frontend + reverse proxy               |
+| `cloudflared`   | HTTPS через Cloudflare Tunnel          |
+
+## 🔧 Полезные команды
+
+```bash
+# Пересборка
+docker-compose up -d --build backend celery_worker nginx
+
+# Миграции
+docker exec mentis_backend alembic upgrade head
+
+# Логи
+docker logs mentis_backend --tail 50
+docker logs mentis_celery_worker --tail 100
+
+# Статус
+docker ps
+```
+
+## 🌍 Поддержка языков
 
 - 🇬🇧 English
 - 🇵🇱 Polski
 - 🇺🇦 Українська
 - 🇷🇺 Русский
 
-## 🚀 Быстрый старт
-
-### Требования:
-
-- Docker & Docker Compose
-- OpenAI API Key
-- (Опционально) Cloudflare Tunnel Token
-
-### Production (Docker Compose):
-
-```bash
-# Клонирование репозитория
-git clone https://github.com/black-sea-pirate/deep_lom.git
-cd deep_lom
-
-# Настройка переменных окружения
-cp .env.example .env
-# Отредактируйте .env, добавьте OPENAI_API_KEY и CLOUDFLARE_TUNNEL_TOKEN
-
-# Запуск всех сервисов
-docker-compose up -d --build
-
-# Проверка статуса
-docker-compose ps
-```
-
-### Локальная разработка (Frontend):
-
-```bash
-# Установка зависимостей
-npm install
-
-# Запуск dev сервера
-npm run dev
-
-# Открыть http://localhost:5173
-```
-
-### Сборка для продакшена:
-
-```bash
-# Создание production build
-npm run build
-
-# Предпросмотр production build
-npm run preview
-```
-
-## 📁 Структура проекта
-
-```
-deep_lom/
-├── src/                 # Vue 3 Frontend
-│   ├── components/      # Переиспользуемые компоненты
-│   ├── i18n/           # Интернационализация (en, pl, ua, ru)
-│   ├── router/         # Vue Router конфигурация
-│   ├── services/       # API сервисы (axios)
-│   ├── stores/         # Pinia stores
-│   ├── types/          # TypeScript типы
-│   └── views/          # Страницы приложения
-├── backend/            # FastAPI Backend
-│   ├── app/
-│   │   ├── api/v1/     # REST API endpoints
-│   │   ├── models/     # SQLAlchemy модели
-│   │   ├── schemas/    # Pydantic схемы
-│   │   ├── services/   # Бизнес-логика (AI, RAG)
-│   │   └── tasks/      # Celery задачи
-│   └── alembic/        # Миграции БД
-├── monitoring/         # Prometheus + Grafana
-├── docker-compose.yml  # Оркестрация сервисов
-└── nginx.conf          # Reverse proxy config
-```
-
-## 🎨 Дизайн
-
-### Цветовая палитра:
-
-- **Primary:** #3B82F6 (синий) - основной цвет
-- **Secondary:** #10B981 (зелёный) - успех
-- **Accent:** #F59E0B (янтарный) - акценты
-- **Neutral:** #F3F4F6 (светло-серый) - фон
-- **Dark:** #1F2937 (тёмный) - текст
-
-### Особенности UI:
-
-- ✨ Современный минималистичный дизайн
-- 📱 Полностью адаптивная верстка
-- 🎭 Плавные анимации и переходы
-- ♿ Доступность (accessibility)
-- 🌙 Тёмная тема
-
-## 🗺 Roadmap
-
-### ✅ Этап 1: Frontend (Завершён)
-
-- [x] Vue 3 + TypeScript + Vite
-- [x] Все основные страницы
-- [x] Интернационализация (4 языка)
-- [x] Адаптивный дизайн
-- [x] Тёмная тема
-
-### ✅ Этап 2: Backend (Завершён)
-
-- [x] FastAPI сервер
-- [x] PostgreSQL база данных
-- [x] JWT аутентификация
-- [x] RESTful API endpoints
-- [x] Интеграция с GPT-4.1
-- [x] OpenAI Vector Stores для RAG
-- [x] Celery для фоновых задач
-
-### ✅ Этап 3: Интеграция (Завершён)
-
-- [x] Подключение фронтенда к API
-- [x] Генерация N вариантов теста
-- [x] Timer mode (total/per_question)
-- [x] AI Grading для эссе
-
-### ✅ Этап 4: Deployment (Завершён)
-
-- [x] Docker контейнеризация (10 сервисов)
-- [x] Cloudflare Tunnel (HTTPS)
-- [x] Prometheus + Grafana мониторинг
-- [x] Production на https://mentis.forzone.uk
-
-### 🔄 В разработке
-
-- [ ] WebSocket для Lobby (real-time)
-- [ ] Расширенная аналитика
-- [ ] Unit/Integration тесты
-
-## 📝 Доступные скрипты
-
-```bash
-# Разработка
-npm run dev              # Запуск dev сервера
-
-# Сборка
-npm run build            # Production build
-npm run preview          # Предпросмотр production build
-
-# Линтинг и форматирование
-npm run lint             # Проверка кода
-npm run format           # Форматирование кода
-
-# Тесты (когда будут добавлены)
-npm run test             # Запуск тестов
-npm run test:coverage    # Покрытие тестами
-```
-
-## 🤝 Участие в разработке
-
-Этот проект является дипломной работой. Если у вас есть предложения или вы нашли ошибку:
-
-1. Создайте Issue
-2. Fork проекта
-3. Создайте feature branch
-4. Commit изменения
-5. Создайте Pull Request
-
 ## 📄 Лицензия
 
 Дипломный проект. Все права защищены.
 
-## 👤 Автор
-
-Дипломный проект студента
-
-## 🙏 Благодарности
-
-- Vue.js команда за отличный фреймворк
-- Element Plus за красивые компоненты
-- OpenAI за GPT-4.1 API и Vector Stores
-- FastAPI за быстрый async backend
-
 ---
 
-**Статус проекта:** 🟢 Production
-
-Последнее обновление: Декабрь 2025
+**Статус:** 🟢 Production  
+**Последнее обновление:** Январь 2026

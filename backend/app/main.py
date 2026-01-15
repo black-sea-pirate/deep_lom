@@ -6,7 +6,6 @@ Main application entry point with:
 - Router registration
 - Startup/shutdown events
 - Health check endpoints
-- Prometheus metrics instrumentation
 """
 
 from contextlib import asynccontextmanager
@@ -14,7 +13,6 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from prometheus_fastapi_instrumentator import Instrumentator
 import os
 
 from app.core.config import settings
@@ -51,8 +49,7 @@ async def lifespan(app: FastAPI):
     
     print("✅ Database tables created")
     print(f"📁 Upload directory: {settings.UPLOAD_DIR}")
-    print("📊 Prometheus metrics available at /metrics")
-    print("🛡️ Exception handlers registered")
+    print("️ Exception handlers registered")
     
     yield
     
@@ -71,19 +68,6 @@ app = FastAPI(
     redoc_url=f"{settings.API_V1_STR}/redoc",
     lifespan=lifespan,
 )
-
-# Initialize Prometheus instrumentator
-instrumentator = Instrumentator(
-    should_group_status_codes=True,
-    should_ignore_untemplated=True,
-    should_instrument_requests_inprogress=True,
-    excluded_handlers=["/health", "/metrics"],
-    inprogress_name="mentis_http_requests_inprogress",
-    inprogress_labels=True,
-)
-
-# Instrument the app and expose /metrics endpoint
-instrumentator.instrument(app).expose(app)
 
 # CORS middleware configuration
 app.add_middleware(
