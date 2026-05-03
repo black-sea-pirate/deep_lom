@@ -36,8 +36,8 @@ const handleRegister = async () => {
       formData.value.role
     );
 
-    ElMessage.success("Registration successful!");
-    router.push(formData.value.role === "teacher" ? "/teacher" : "/student");
+    ElMessage.success("Registration successful! Please verify your email.");
+    router.push("/verify-email");
   } catch (error) {
     ElMessage.error("Registration failed");
   } finally {

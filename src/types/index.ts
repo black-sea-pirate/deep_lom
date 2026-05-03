@@ -6,6 +6,7 @@ export interface User {
   firstName: string;
   lastName: string;
   createdAt: Date;
+  isVerified?: boolean;
 }
 
 // Project types

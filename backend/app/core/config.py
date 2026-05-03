@@ -95,6 +95,14 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
+    # Email (Resend)
+    RESEND_API_KEY: str = ""
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    # Password reset code TTL in seconds (10 minutes)
+    PASSWORD_RESET_CODE_TTL: int = 600
+    PASSWORD_RESET_MAX_ATTEMPTS: int = 5
+
 
 # Global settings instance
 settings = Settings()

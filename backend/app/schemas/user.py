@@ -71,7 +71,8 @@ class UserResponse(BaseModel):
     firstName: Optional[str] = Field(None, validation_alias="first_name")
     lastName: Optional[str] = Field(None, validation_alias="last_name")
     createdAt: Optional[datetime] = Field(None, validation_alias="created_at")
-    
+    isVerified: Optional[bool] = Field(None, validation_alias="is_verified")
+
     class Config:
         from_attributes = True
         populate_by_name = True
@@ -109,5 +110,22 @@ class AuthResponse(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    """Refresh token request"""
+    """Refresh token request (legacy body-based — now cookie-based)"""
     refresh_token: str
+
+
+class PasswordResetRequest(BaseModel):
+    """Request to send a reset code to email"""
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    """Verify code and set new password"""
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
+class EmailVerifyRequest(BaseModel):
+    """Verify email with 6-digit code"""
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")

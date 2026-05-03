@@ -2,38 +2,35 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type { User } from "@/types";
 import { authService } from "@/services";
+import { setApiToken } from "@/services/api";
 
 export const useAuthStore = defineStore("auth", () => {
+  // Access token lives in memory only — never in localStorage.
+  // Refresh token is an httpOnly cookie managed by the browser.
   const user = ref<User | null>(null);
-  const token = ref<string | null>(localStorage.getItem("token"));
-  const refreshToken = ref<string | null>(localStorage.getItem("refreshToken"));
+  const token = ref<string | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
-  const initialized = ref(false); // Флаг что checkAuth завершился
+  // False until the initial silent-refresh attempt completes (success or failure).
+  const initialized = ref(false);
 
   const isAuthenticated = computed(() => !!token.value && !!user.value);
-  const hasToken = computed(() => !!token.value); // Для быстрой проверки до checkAuth
+  const isVerified = computed(() => user.value?.isVerified === true);
   const isTeacher = computed(() => user.value?.role === "teacher");
   const isStudent = computed(() => user.value?.role === "student");
 
-  /**
-   * Login user with email and password
-   */
   const login = async (
     email: string,
     password: string,
-    _role: "teacher" | "student" // Role is determined by backend
+    _role: "teacher" | "student"
   ) => {
     loading.value = true;
     error.value = null;
-
     try {
       const response = await authService.login({ email, password });
-
       user.value = response.user;
       token.value = response.access_token;
-      localStorage.setItem("token", response.access_token);
-
+      setApiToken(response.access_token);
       return response.user;
     } catch (err: any) {
       error.value = err.response?.data?.detail || "Login failed";
@@ -43,9 +40,6 @@ export const useAuthStore = defineStore("auth", () => {
     }
   };
 
-  /**
-   * Register new user
-   */
   const register = async (
     email: string,
     password: string,
@@ -55,7 +49,6 @@ export const useAuthStore = defineStore("auth", () => {
   ) => {
     loading.value = true;
     error.value = null;
-
     try {
       const response = await authService.register({
         email,
@@ -64,11 +57,9 @@ export const useAuthStore = defineStore("auth", () => {
         lastName,
         role,
       });
-
       user.value = response.user;
       token.value = response.access_token;
-      localStorage.setItem("token", response.access_token);
-
+      setApiToken(response.access_token);
       return response.user;
     } catch (err: any) {
       error.value = err.response?.data?.detail || "Registration failed";
@@ -78,71 +69,42 @@ export const useAuthStore = defineStore("auth", () => {
     }
   };
 
-  /**
-   * Logout current user
-   */
   const logout = async () => {
     try {
       await authService.logout();
     } catch {
-      // Ignore logout API errors
+      // Always clear local state even if the API call fails
     } finally {
       user.value = null;
       token.value = null;
-      refreshToken.value = null;
-      localStorage.removeItem("token");
-      localStorage.removeItem("refreshToken");
+      setApiToken(null);
     }
   };
 
   /**
-   * Check authentication status and fetch current user
+   * Called once on app boot (router guard).
+   * Tries a silent token refresh via the httpOnly cookie.
+   * If the cookie is absent or expired the user must log in manually.
    */
   const checkAuth = async () => {
-    if (!token.value) {
-      user.value = null;
-      initialized.value = true;
-      return;
-    }
-
     loading.value = true;
     try {
+      const refreshResponse = await authService.refreshToken();
+      token.value = refreshResponse.access_token;
+      setApiToken(refreshResponse.access_token);
+
       const currentUser = await authService.getCurrentUser();
       user.value = currentUser;
-    } catch (err) {
-      // Token is invalid or expired
+    } catch {
       user.value = null;
       token.value = null;
-      localStorage.removeItem("token");
+      setApiToken(null);
     } finally {
       loading.value = false;
       initialized.value = true;
     }
   };
 
-  /**
-   * Refresh access token
-   */
-  const refreshAccessToken = async () => {
-    if (!refreshToken.value) {
-      throw new Error("No refresh token available");
-    }
-
-    try {
-      const response = await authService.refreshToken();
-      token.value = response.access_token;
-      localStorage.setItem("token", response.access_token);
-      return response.access_token;
-    } catch (err) {
-      // Refresh failed, logout user
-      await logout();
-      throw err;
-    }
-  };
-
-  /**
-   * Update user profile
-   */
   const updateProfile = async (userData: Partial<User>) => {
     loading.value = true;
     try {
@@ -154,9 +116,6 @@ export const useAuthStore = defineStore("auth", () => {
     }
   };
 
-  /**
-   * Change user password
-   */
   const changePassword = async (oldPassword: string, newPassword: string) => {
     loading.value = true;
     try {
@@ -166,32 +125,24 @@ export const useAuthStore = defineStore("auth", () => {
     }
   };
 
-  /**
-   * Clear error state
-   */
   const clearError = () => {
     error.value = null;
   };
 
   return {
-    // State
     user,
     token,
-    refreshToken,
     loading,
     error,
     initialized,
-    // Getters
     isAuthenticated,
-    hasToken,
+    isVerified,
     isTeacher,
     isStudent,
-    // Actions
     login,
     register,
     logout,
     checkAuth,
-    refreshAccessToken,
     updateProfile,
     changePassword,
     clearError,

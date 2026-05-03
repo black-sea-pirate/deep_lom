@@ -8,7 +8,7 @@
  * - Project-material associations
  */
 
-import api, { type PaginatedResponse } from "./api";
+import api, { getApiToken, type PaginatedResponse } from "./api";
 import type { Material, MaterialFolder } from "@/types";
 
 /**
@@ -214,7 +214,7 @@ export const materialService = {
   getPreviewUrl(id: string): string {
     const baseUrl =
       import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
-    const token = localStorage.getItem("token");
+    const token = getApiToken() ?? "";
     return `${baseUrl}/materials/${id}/preview?token=${token}`;
   },
 

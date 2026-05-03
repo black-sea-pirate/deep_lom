@@ -1,12 +1,12 @@
 /**
  * API Service - Centralized HTTP client configuration
  *
- * This module provides a configured Axios instance with:
- * - Base URL from environment variables
- * - JWT token injection via interceptors
- * - Automatic token refresh handling
- * - Centralized error handling with detailed logging
- * - Request/Response logging in development
+ * Access token  → Pinia memory only (not localStorage)
+ * Refresh token → httpOnly cookie (managed by browser, never JS-accessible)
+ *
+ * On 401: silently calls /auth/refresh (cookie sent automatically by browser).
+ * Concurrent requests during refresh are queued and retried once the new
+ * access token arrives.
  */
 
 import axios, {
@@ -15,105 +15,73 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 import { ElMessage } from "element-plus";
-import { handleError, type ErrorInfo } from "@/utils/error-handler";
+import { handleError } from "@/utils/error-handler";
 
-// API Base URL from environment variables
 const API_BASE_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
 
-// Flag to prevent multiple refresh attempts
 let isRefreshing = false;
-// Queue of failed requests to retry after token refresh
 let failedQueue: Array<{
   resolve: (value?: unknown) => void;
   reject: (reason?: unknown) => void;
 }> = [];
 
-/**
- * Process queued requests after token refresh
- */
 const processQueue = (error: Error | null, token: string | null = null) => {
   failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
+    error ? prom.reject(error) : prom.resolve(token);
   });
   failedQueue = [];
 };
 
-/**
- * Configured Axios instance for all API calls
- */
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 seconds timeout
-  headers: {
-    "Content-Type": "application/json",
-  },
+  timeout: 30000,
+  withCredentials: true, // Required: sends httpOnly refresh-token cookie on every request
+  headers: { "Content-Type": "application/json" },
 });
 
-/**
- * Request Interceptor
- * - Injects JWT token from localStorage
- * - Logs requests in development mode
- */
+// ---------------------------------------------------------------------------
+// Request interceptor — attach access token from Pinia store
+// ---------------------------------------------------------------------------
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Get token from localStorage
-    const token = localStorage.getItem("token");
-
+    // Lazily import store to avoid circular dependency at module init time
+    const token = _getAccessToken();
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // Log requests in development
     if (import.meta.env.DEV) {
       console.log(
-        `🚀 [API Request] ${config.method?.toUpperCase()} ${config.url}`,
+        `🚀 [API] ${config.method?.toUpperCase()} ${config.url}`,
         config.data || ""
       );
     }
-
     return config;
   },
-  (error: AxiosError) => {
-    console.error("❌ [API Request Error]", error);
-    return Promise.reject(error);
-  }
+  (error: AxiosError) => Promise.reject(error)
 );
 
-/**
- * Response Interceptor
- * - Handles successful responses
- * - Manages authentication errors (401) with token refresh
- * - Provides user-friendly error messages with detailed logging
- */
+// ---------------------------------------------------------------------------
+// Response interceptor — silent token refresh on 401
+// ---------------------------------------------------------------------------
 api.interceptors.response.use(
   (response: AxiosResponse) => {
-    // Log responses in development
     if (import.meta.env.DEV) {
-      console.log(`✅ [API Response] ${response.config.url}`, response.data);
+      console.log(`✅ [API] ${response.config.url}`, response.data);
     }
     return response;
   },
-  async (
-    error: AxiosError<{
-      detail?: string | any[];
-      message?: string;
-      error?: any;
-    }>
-  ) => {
+  async (error: AxiosError<{ detail?: string | any[]; message?: string }>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
     };
 
-    // Handle 401 Unauthorized - Token expired or invalid
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      // Check if we're already refreshing
+    const is401 = error.response?.status === 401;
+    const isRefreshEndpoint = originalRequest?.url?.includes("/auth/refresh");
+
+    if (is401 && !originalRequest._retry && !isRefreshEndpoint) {
       if (isRefreshing) {
-        // Queue this request
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         })
@@ -129,76 +97,79 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem("refreshToken");
+      try {
+        // No body needed — browser sends the httpOnly cookie automatically
+        const response = await axios.post(
+          `${API_BASE_URL}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
+        const newToken: string = response.data.access_token;
 
-      if (refreshToken) {
-        try {
-          // Try to refresh the token
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
+        // Update in-memory store token
+        _setAccessToken(newToken);
+        processQueue(null, newToken);
 
-          const newToken = response.data.access_token;
-          localStorage.setItem("token", newToken);
-
-          // Process queued requests
-          processQueue(null, newToken);
-
-          // Retry original request
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          }
-          return api(originalRequest);
-        } catch (refreshError) {
-          // Refresh failed - clear tokens and redirect to login
-          processQueue(refreshError as Error, null);
-          localStorage.removeItem("token");
-          localStorage.removeItem("refreshToken");
-
-          if (window.location.pathname !== "/login") {
-            ElMessage.error("Сессия истекла. Пожалуйста, войдите снова.");
-            window.location.href = "/login";
-          }
-
-          return Promise.reject(refreshError);
-        } finally {
-          isRefreshing = false;
+        if (originalRequest.headers) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
         }
-      } else {
-        // No refresh token - clear and redirect
-        localStorage.removeItem("token");
+        return api(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError as Error, null);
+        _clearSession();
 
         if (window.location.pathname !== "/login") {
           ElMessage.error("Сессия истекла. Пожалуйста, войдите снова.");
           window.location.href = "/login";
         }
-
-        return Promise.reject(error);
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 
-    // Use centralized error handler for all other errors
-    // This logs detailed error info and shows user-friendly messages
+    // For all other errors use the centralized handler
     handleError(error, undefined, { silent: false });
-
     return Promise.reject(error);
   }
 );
 
+// ---------------------------------------------------------------------------
+// Helpers to read/write the access token stored in the Pinia auth store.
+// We cannot import the store directly here (circular dep), so we delegate
+// to a tiny in-module cache that the auth store syncs after each login/refresh.
+// ---------------------------------------------------------------------------
+
+let _inMemoryToken: string | null = null;
+
+export function setApiToken(token: string | null): void {
+  _inMemoryToken = token;
+}
+
+export function getApiToken(): string | null {
+  return _inMemoryToken;
+}
+
+function _getAccessToken(): string | null {
+  return _inMemoryToken;
+}
+
+function _setAccessToken(token: string): void {
+  _inMemoryToken = token;
+}
+
+function _clearSession(): void {
+  _inMemoryToken = null;
+}
+
 export default api;
 
-/**
- * Type-safe API response wrapper
- */
 export interface ApiResponse<T> {
   data: T;
   message?: string;
   success: boolean;
 }
 
-/**
- * Paginated response type for list endpoints
- */
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

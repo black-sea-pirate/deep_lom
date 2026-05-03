@@ -19,6 +19,12 @@ const router = createRouter({
       component: () => import("@/views/RegisterView.vue"),
     },
     {
+      path: "/verify-email",
+      name: "verify-email",
+      component: () => import("@/views/EmailVerificationView.vue"),
+      meta: { requiresAuth: true },
+    },
+    {
       // Teacher area now uses a layout with a persistent sidebar
       path: "/teacher",
       component: () => import("@/layouts/TeacherLayout.vue"),
@@ -101,19 +107,33 @@ const router = createRouter({
 router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
 
-  // Если есть токен, но checkAuth ещё не выполнялся — ждём
-  if (authStore.hasToken && !authStore.initialized) {
+  // On first navigation always attempt a silent refresh via httpOnly cookie.
+  if (!authStore.initialized) {
     await authStore.checkAuth();
   }
 
-  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    next("/login");
-  } else if (to.meta.role && authStore.user?.role !== to.meta.role) {
-    // Redirect to appropriate dashboard
-    next(authStore.isTeacher ? "/teacher" : "/student");
-  } else {
-    next();
+  const isAuth = authStore.isAuthenticated;
+  const isVerified = authStore.user?.isVerified ?? false;
+  const requiresAuth = to.meta.requiresAuth;
+  const requiredRole = to.meta.role as string | undefined;
+
+  // Not authenticated — send to login
+  if (requiresAuth && !isAuth) {
+    return next("/login");
   }
+
+  // Authenticated but email not verified — send to verification page
+  // (except for verify-email itself and auth endpoints to avoid loop)
+  if (isAuth && !isVerified && to.name !== "verify-email") {
+    return next("/verify-email");
+  }
+
+  // Wrong role
+  if (requiredRole && authStore.user?.role !== requiredRole) {
+    return next(authStore.isTeacher ? "/teacher" : "/student");
+  }
+
+  next();
 });
 
 export default router;
