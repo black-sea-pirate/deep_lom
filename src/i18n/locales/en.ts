@@ -376,6 +376,29 @@ export default {
     goToMaterials: "Go to Materials",
   },
 
+  // Question Regeneration
+  regen: {
+    title: "Regenerate Question",
+    currentQuestion: "Current question",
+    choosePreset: "Choose an action",
+    presetRephrase: "Rephrase",
+    presetHarder: "Make Harder",
+    presetEasier: "Make Easier",
+    presetDifferent: "Different Topic",
+    customInstruction: "Custom instruction (optional)",
+    customPlaceholder: "e.g. Focus on a different chapter, use simpler vocabulary...",
+    generate: "Generate",
+    generating: "Generating...",
+    preview: "Preview",
+    apply: "Apply",
+    tryAgain: "Try Again",
+    applied: "Question updated successfully",
+    error: "Failed to regenerate question",
+    correctAnswer: "Correct answer",
+    keywords: "Keywords",
+    language: "Question language",
+  },
+
   // Results
   results: {
     title: "Test Results",

@@ -371,6 +371,29 @@ export default {
     goToMaterials: "Перейти до матеріалів",
   },
 
+  // Question Regeneration
+  regen: {
+    title: "Перегенерувати питання",
+    currentQuestion: "Поточне питання",
+    choosePreset: "Оберіть дію",
+    presetRephrase: "Перефразувати",
+    presetHarder: "Складніше",
+    presetEasier: "Простіше",
+    presetDifferent: "Інша тема",
+    customInstruction: "Свій промпт (необов'язково)",
+    customPlaceholder: "наприклад: зробити акцент на іншому розділі...",
+    generate: "Згенерувати",
+    generating: "Генерація...",
+    preview: "Попередній перегляд",
+    apply: "Застосувати",
+    tryAgain: "Спробувати знову",
+    applied: "Питання успішно оновлено",
+    error: "Не вдалося перегенерувати питання",
+    correctAnswer: "Правильна відповідь",
+    keywords: "Ключові слова",
+    language: "Мова питання",
+  },
+
   // Results
   results: {
     title: "Результати Тесту",

@@ -373,6 +373,29 @@ export default {
     goToMaterials: "Przejdź do materiałów",
   },
 
+  // Question Regeneration
+  regen: {
+    title: "Wygeneruj pytanie ponownie",
+    currentQuestion: "Aktualne pytanie",
+    choosePreset: "Wybierz akcję",
+    presetRephrase: "Przeformułuj",
+    presetHarder: "Trudniejsze",
+    presetEasier: "Łatwiejsze",
+    presetDifferent: "Inny temat",
+    customInstruction: "Własna instrukcja (opcjonalnie)",
+    customPlaceholder: "np. skup się na innym rozdziale, uprość sformułowanie...",
+    generate: "Generuj",
+    generating: "Generowanie...",
+    preview: "Podgląd",
+    apply: "Zastosuj",
+    tryAgain: "Spróbuj ponownie",
+    applied: "Pytanie zostało zaktualizowane",
+    error: "Nie udało się wygenerować pytania",
+    correctAnswer: "Poprawna odpowiedź",
+    keywords: "Słowa kluczowe",
+    language: "Język pytania",
+  },
+
   // Results
   results: {
     title: "Wyniki Testu",

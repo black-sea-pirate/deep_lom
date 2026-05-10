@@ -988,6 +988,79 @@ async def delete_question(
     return {"message": "Question deleted successfully"}
 
 
+@router.post("/{project_id}/questions/{question_id}/regenerate")
+async def regenerate_question_endpoint(
+    project_id: UUID,
+    question_id: UUID,
+    body: dict,
+    current_user: User = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Regenerate a single question using the project's Vector Store (RAG).
+    Returns a preview — does NOT save to DB.
+    Apply the result via PUT /{project_id}/questions/{question_id}.
+    """
+    import asyncio
+    from app.models.test import Question
+    from app.services.question_regeneration import regenerate_question
+
+    project_query = select(Project).where(
+        Project.id == project_id,
+        Project.teacher_id == current_user.id,
+    )
+    project_result = await db.execute(project_query)
+    project = project_result.scalar_one_or_none()
+
+    if not project:
+        raise NotFoundException(resource="Project", resource_id=str(project_id))
+
+    if not project.openai_vector_store_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Project has no Vector Store. Please vectorize materials first.",
+        )
+
+    q_result = await db.execute(
+        select(Question).where(
+            Question.id == question_id,
+            Question.project_id == project_id,
+        )
+    )
+    question = q_result.scalar_one_or_none()
+
+    if not question:
+        raise NotFoundException(resource="Question", resource_id=str(question_id))
+
+    existing_question = {
+        "questionType": question.question_type,
+        "text": question.text,
+        "points": question.points,
+        "options": question.options,
+        "correctAnswer": question.correct_answer,
+        "expectedKeywords": question.expected_keywords,
+        "pairs": question.matching_pairs,
+    }
+
+    preset = body.get("preset")
+    custom_instruction = body.get("instruction")
+    target_language = body.get("language", "en")
+
+    loop = asyncio.get_event_loop()
+    new_question = await loop.run_in_executor(
+        None,
+        lambda: regenerate_question(
+            vector_store_id=project.openai_vector_store_id,
+            existing_question=existing_question,
+            preset=preset,
+            custom_instruction=custom_instruction,
+            target_language=target_language,
+        ),
+    )
+
+    return new_question
+
+
 # ==================== Project Students Management ====================
 
 def _build_student_profiles(

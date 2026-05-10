@@ -373,6 +373,29 @@ export default {
     goToMaterials: "Перейти к материалам",
   },
 
+  // Question Regeneration
+  regen: {
+    title: "Перегенерировать вопрос",
+    currentQuestion: "Текущий вопрос",
+    choosePreset: "Выберите действие",
+    presetRephrase: "Перефразировать",
+    presetHarder: "Сложнее",
+    presetEasier: "Проще",
+    presetDifferent: "Другая тема",
+    customInstruction: "Свой промпт (необязательно)",
+    customPlaceholder: "например: сделать акцент на другой главе, упростить формулировку...",
+    generate: "Сгенерировать",
+    generating: "Генерация...",
+    preview: "Предпросмотр",
+    apply: "Применить",
+    tryAgain: "Попробовать снова",
+    applied: "Вопрос успешно обновлён",
+    error: "Не удалось перегенерировать вопрос",
+    correctAnswer: "Правильный ответ",
+    keywords: "Ключевые слова",
+    language: "Язык вопроса",
+  },
+
   // Results
   results: {
     title: "Результаты Теста",

@@ -22,8 +22,10 @@ import {
   Check,
   Close,
   Rank,
+  MagicStick,
 } from "@element-plus/icons-vue";
 import api from "@/services/api";
+import RegenerateQuestionDialog from "@/components/RegenerateQuestionDialog.vue";
 
 interface Question {
   id: string;
@@ -40,13 +42,15 @@ interface Question {
 
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const loading = ref(true);
 const saving = ref(false);
 const questions = ref<Question[]>([]);
 const editingQuestion = ref<Question | null>(null);
 const showEditDialog = ref(false);
+const showRegenerateDialog = ref(false);
+const regeneratingQuestion = ref<Question | null>(null);
 const projectTitle = ref("");
 
 // Variants
@@ -176,6 +180,33 @@ const questionTypeTag = (type: string): string => {
     matching: "danger",
   };
   return types[type] || "info";
+};
+
+// Regenerate question
+const openRegenerateDialog = (question: Question) => {
+  regeneratingQuestion.value = question;
+  showRegenerateDialog.value = true;
+};
+
+const applyRegenerated = async (preview: Partial<Question>) => {
+  if (!regeneratingQuestion.value) return;
+  saving.value = true;
+  try {
+    const updated = { ...regeneratingQuestion.value, ...preview };
+    await api.put(
+      `/projects/${projectId.value}/questions/${regeneratingQuestion.value.id}`,
+      updated
+    );
+    const index = questions.value.findIndex((q) => q.id === regeneratingQuestion.value!.id);
+    if (index !== -1) {
+      questions.value[index] = updated as Question;
+    }
+    ElMessage.success(t("regen.applied"));
+  } catch {
+    ElMessage.error(t("common.saveError") || "Failed to save question");
+  } finally {
+    saving.value = false;
+  }
 };
 
 // Edit question
@@ -357,6 +388,14 @@ const goBack = () => {
               {{ question.points === 1 ? "point" : "points" }}
             </el-tag>
             <div class="question-actions">
+              <el-tooltip :content="t('regen.title')" placement="top">
+                <el-button
+                  size="small"
+                  type="warning"
+                  :icon="MagicStick"
+                  @click="openRegenerateDialog(question)"
+                />
+              </el-tooltip>
               <el-button
                 size="small"
                 :icon="Edit"
@@ -465,6 +504,15 @@ const goBack = () => {
         </el-card>
       </div>
     </div>
+
+    <!-- Regenerate Question Dialog -->
+    <RegenerateQuestionDialog
+      v-model="showRegenerateDialog"
+      :question="regeneratingQuestion"
+      :project-id="projectId"
+      :language="locale"
+      @regenerated="applyRegenerated"
+    />
 
     <!-- Edit/Create Dialog -->
     <el-dialog
