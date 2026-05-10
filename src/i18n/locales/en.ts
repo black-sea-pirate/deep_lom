@@ -363,6 +363,7 @@ export default {
     supportedFormats: "Supported formats: PDF, DOCX, TXT, PNG, JPG",
     configureSettings: "Configure test settings",
     generatingTests: "Generating tests...",
+    readyToGenerate: "Ready to generate tests",
     testsGenerated: "Tests generated successfully!",
     readyToTest: "Project created and ready for testing!",
     goToDashboard: "Go to Dashboard",

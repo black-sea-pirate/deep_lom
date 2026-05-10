@@ -361,6 +361,7 @@ export default {
     supportedFormats: "Obsługiwane formaty: PDF, DOCX, TXT, PNG, JPG",
     configureSettings: "Skonfiguruj ustawienia testu",
     generatingTests: "Generowanie testów...",
+    readyToGenerate: "Gotowe do generowania testów",
     testsGenerated: "Testy wygenerowane pomyślnie!",
     readyToTest: "Projekt utworzony i gotowy do testowania!",
     goToDashboard: "Przejdź do panelu",

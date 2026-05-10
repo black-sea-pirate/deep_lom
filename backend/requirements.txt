@@ -31,3 +31,9 @@ httpx==0.28.0
 
 # Utilities
 python-dotenv==1.0.1
+
+# Testing (not installed in production image — used only in dev/CI)
+pytest==8.3.4
+pytest-asyncio==0.24.0
+aiosqlite==0.20.0
+fakeredis==2.26.2

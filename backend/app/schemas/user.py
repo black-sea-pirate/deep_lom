@@ -50,17 +50,6 @@ class PasswordChange(BaseModel):
     new_password: str = Field(..., min_length=6, max_length=100)
 
 
-class PasswordReset(BaseModel):
-    """Schema for password reset request"""
-    email: EmailStr
-
-
-class PasswordResetConfirm(BaseModel):
-    """Schema for password reset confirmation"""
-    token: str
-    new_password: str = Field(..., min_length=6, max_length=100)
-
-
 # ============== Response Schemas ==============
 
 class UserResponse(BaseModel):

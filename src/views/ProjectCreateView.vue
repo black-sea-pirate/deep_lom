@@ -749,8 +749,11 @@ onMounted(() => {
         <!-- Step 4: Generate -->
         <div v-show="currentStep === 3" class="step">
           <div class="generate-section">
-            <el-icon v-if="!loading" :size="80" color="#10b981">
+            <el-icon v-if="!loading && generationCompleted" :size="80" color="#10b981">
               <CircleCheck />
+            </el-icon>
+            <el-icon v-else-if="!loading" :size="80" color="#3b82f6">
+              <Document />
             </el-icon>
             <div v-else class="loading-container">
               <el-progress
@@ -771,7 +774,9 @@ onMounted(() => {
               {{
                 loading
                   ? progressStep || t("wizard.generatingTests")
-                  : t("wizard.testsGenerated")
+                  : generationCompleted
+                    ? t("wizard.testsGenerated")
+                    : t("wizard.readyToGenerate")
               }}
             </h3>
             <p v-if="loading && progressDetails" class="progress-details">

@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(docker-compose up *)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Bash(venv/Scripts/python -c \"import fakeredis; print\\(fakeredis.__version__\\); print\\(dir\\(fakeredis\\)\\)\")",
+      "Bash(venv/Scripts/python -m pytest tests/ -v --tb=short)",
+      "Bash(venv/Scripts/python -m pytest tests/ -v --tb=short --no-header -p no:logging)",
+      "Bash(venv/Scripts/python -m pytest tests/test_auth.py tests/test_auth_service.py tests/test_normalize_question.py -v --tb=short --no-header -p no:logging)",
+      "Bash(npm run *)"
     ]
   }
 }
